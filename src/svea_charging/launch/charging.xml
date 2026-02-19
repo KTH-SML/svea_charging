@@ -4,9 +4,9 @@
     <arg name="map"             default="sml"/>
     <arg name="is_sim"          default="true"/>
     <arg name="use_foxglove"    default="true"/>
-    <arg name="initial_pose_x"  default="0"/> <!-- changed-->
-    <arg name="initial_pose_y"  default="0"/> <!-- changed-->
-    <arg name="initial_pose_a"  default="0" /> <!-- wrt to map--> <!-- changed-->
+    <arg name="initial_pose_x"  default="0.0"/> <!-- changed-->
+    <arg name="initial_pose_y"  default="0.0"/> <!-- changed-->
+    <arg name="initial_pose_a"  default="0.0" /> <!-- wrt to map--> <!-- changed-->
     <arg name="map_path" default="$(find-pkg-share svea_core)/maps/$(var map).yaml"/>
     <arg name="state" default="[-7.4, -15.3, 0.9, 0.0]" /> <!-- should be changed-->
 
@@ -17,7 +17,7 @@
     </include>   
     
     <!-- Start Svea Core -->
-    <include file="$(find-pkg-share svea_core)/launch/svea.xml">
+    <include file="$(find-pkg-share svea_core)/launch/svea_mocap.xml">
         <arg name="is_sim" value="$(var is_sim)" />
         <arg name="initial_pose_x" value="$(var initial_pose_x)" />
         <arg name="initial_pose_y" value="$(var initial_pose_y)" />
@@ -30,7 +30,6 @@
     <node name="stanleyExecutable" pkg="svea_charging" exec="stanleyExecutable.py" output="screen">
         <param name="use_rviz" value="$(var use_foxglove)"/>
         <param name="is_sim" value="$(var is_sim)"/>
-        <param name="points" value="$(var points)" />
     </node>
 
 </launch>
