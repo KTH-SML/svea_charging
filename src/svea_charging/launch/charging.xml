@@ -30,7 +30,6 @@
     <node name="stanleyExecutable" pkg="svea_charging" exec="stanleyExecutable.py" output="screen">
         <param name="use_rviz" value="$(var use_foxglove)"/>
         <param name="is_sim" value="$(var is_sim)"/>
-        <param name="state" value="$(var state)" />
         <param name="points" value="$(var points)" />
     </node>
 
