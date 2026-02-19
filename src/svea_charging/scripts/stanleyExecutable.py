@@ -12,11 +12,9 @@ from svea_core.svea_core.utils import PlaceMarker, ShowPath
 
 class stanley_control(rx.Node):
     DELTA_TIME = 0.1
-    TRAJ_LEN = 20
 
-    points = rx.Parameter(['[-2.3, -7.1]', '[10.5, 11.7]', '[5.7, 15.0]', '[-7.0, -4.0]']) #we should change these points.
-    state = rx.Parameter([-7.4, -15.3, 0.9, 0.0])  # x, y, yaw, vel (we should change initial state.)
-    target_velocity = rx.Parameter(0.6)
+    endPoint = rx.Parameter('[0, 0]')
+    target_velocity = rx.Parameter(0.5)
     
     # Interfaces
     actuation = ActuationInterface()
@@ -28,9 +26,6 @@ class stanley_control(rx.Node):
 
 
     def on_startup(self):
-        # Convert POINTS to numerical lists if loaded as strings
-        if isinstance(self.points[0], str):
-            self._points = [eval(point) for point in self.points]
 
         self.controller = StanleyController()
         self.controller.target_velocity = self.target_velocity
@@ -38,8 +33,7 @@ class stanley_control(rx.Node):
         state = self.localizer.get_state()
         x, y, yaw, vel = state
 
-        self.curr = 0
-        self.goal = self._points[self.curr]
+        self.goal = eval(self.endPoint)
         self.mark.marker('goal','blue',self.goal)
         self.update_traj(x, y)
 
@@ -53,7 +47,7 @@ class stanley_control(rx.Node):
         x, y, yaw, vel = state
 
         if self.controller.is_finished:
-            self.update_goal()
+            #self.update_goal()
             self.controller.update_traj(x, y)
 
         steering, velocity = self.controller.compute_control(state)
