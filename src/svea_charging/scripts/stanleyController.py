@@ -11,10 +11,10 @@ import matplotlib.pyplot as plt
 import sys
 import pathlib
 
-from svea_core.svea_core.interfaces import LocalizationInterface
+from svea_core.interfaces import LocalizationInterface
 
 sys.path.append(str(pathlib.Path(__file__).parent.parent.parent))
-from third_party.PythonRobotics.PathPlanning.CubicSpline import cubic_spline_planner
+from svea_charging.third_party.PythonRobotics.PathPlanning.CubicSpline import cubic_spline_planner
 
 # Parameters
 k = 1  # control gain

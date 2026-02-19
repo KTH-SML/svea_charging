@@ -4,11 +4,11 @@ import numpy as np
 
 from geometry_msgs.msg import PoseWithCovarianceStamped
 
-from svea_core.svea_core.interfaces import LocalizationInterface
+from svea_core.interfaces import LocalizationInterface
 from stanleyController import StanleyController
-from svea_core.svea_core.interfaces import ActuationInterface
+from svea_core.interfaces import ActuationInterface
 from svea_core import rosonic as rx
-from svea_core.svea_core.utils import PlaceMarker, ShowPath
+from svea_core.utils import PlaceMarker, ShowPath
 
 class stanley_control(rx.Node):
     DELTA_TIME = 0.1
