@@ -14,16 +14,18 @@ from svea_core.interfaces import ShowPath
 class stanley_control(rx.Node):
     DELTA_TIME = 0.1
 
-    endPoint = rx.Parameter('[2.0, 3.0]')
+    endPoint = rx.Parameter('[1.0, 0.0]')
     target_velocity = rx.Parameter(0.5)
     
     # Interfaces
     actuation = ActuationInterface()
     localizer = LocalizationInterface()
 
+    goal_tolerance = rx.Parameter(0.5) #m
 
 
     def on_startup(self):
+        self.reached_goal = False
 
         #create publishers
         self.goal_pub = self.create_publisher(Marker, 'goal_marker', 10)
@@ -40,7 +42,7 @@ class stanley_control(rx.Node):
         #self.get_logger().info(f"Odom msg: {self.localizer._odom_msg}")
         x, y, yaw, vel = state
 
-        self.goal = ast.literal_eval(self.endPoint)
+        self.goal = eval(self.endPoint)
         mx = 0.5*(x + self.goal[0])
         my = 0.5*(y + self.goal[1])
         self.waypoints = [[x, y], [mx, my], self.goal]
@@ -65,6 +67,14 @@ class stanley_control(rx.Node):
         self.publish_waypoints_marker(self.waypoints)
         self.publish_trajectory_marker(self.controller.cx, self.controller.cy)
 
+        dist = self.distance_to_goal(state)
+        if dist <= self.goal_tolerance:
+            if not self.reached_goal:
+                self.get_logger().info("Reached goal!")
+                self.reached_goal = True
+            self.actuation.send_control(0.0, 0.0)
+            return
+
         #self.update_goal()
         self.controller.update_traj(state, self.waypoints)
 
@@ -72,6 +82,11 @@ class stanley_control(rx.Node):
         self.actuation.send_control(steering, velocity)
         self.get_logger().info(f"Steering: {steering}, Velocity: {velocity}")
 
+
+    def distance_to_goal(self, state):
+        x, y, _, _ = state
+        goal_x, goal_y = self.goal
+        return np.sqrt((goal_x - x)**2 + (goal_y - y)**2)
 
     def update_goal(self):
 
@@ -117,7 +132,7 @@ class stanley_control(rx.Node):
         msg.type = Marker.LINE_STRIP
         msg.action = Marker.ADD
 
-        msg.scale.x = 0.08  # line width
+        msg.scale.x = 0.02  # line width
 
         msg.color.r = 1.0
         msg.color.g = 1.0
