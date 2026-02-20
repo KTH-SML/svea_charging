@@ -32,6 +32,11 @@
     <node name="stanleyExecutable" pkg="svea_charging" exec="stanleyExecutable.py" output="screen">
         <param name="use_rviz" value="$(var use_foxglove)"/>
         <param name="is_sim" value="$(var is_sim)"/>
+
+        <remap from="/lli/ctrl/steering" to="/self/lli/ctrl/steering"/>
+        <remap from="/lli/ctrl/throttle" to="/self/lli/ctrl/throttle"/>
+        <remap from="/lli/ctrl/highgear" to="/self/lli/ctrl/highgear"/>
+        <remap from="/lli/ctrl/diff" to="/self/lli/ctrl/diff"/>
     </node>
 
 </launch>
