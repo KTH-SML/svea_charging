@@ -26,6 +26,8 @@
         <arg name="map" value="$(var map)" />
     </include>   
 
+    <push-ros-namespace namespace="self"/>
+
     <!-- Start stanleyController -->
     <node name="stanleyExecutable" pkg="svea_charging" exec="stanleyExecutable.py" output="screen">
         <param name="use_rviz" value="$(var use_foxglove)"/>
