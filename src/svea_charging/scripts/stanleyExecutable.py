@@ -14,8 +14,8 @@ from svea_core.interfaces import ShowPath
 class stanley_control(rx.Node):
     DELTA_TIME = 0.1
 
-    endPoint = rx.Parameter('[1.0, 0.0]')
-    target_velocity = rx.Parameter(0.5)
+    endPoint = rx.Parameter('[0.5, -1.2]')
+    target_velocity = rx.Parameter(0.4)
     
     # Interfaces
     actuation = ActuationInterface()
@@ -26,6 +26,7 @@ class stanley_control(rx.Node):
 
     def on_startup(self):
         self.reached_goal = False
+        self.counter = 0
 
         #create publishers
         self.goal_pub = self.create_publisher(Marker, 'goal_marker', 10)
@@ -36,7 +37,7 @@ class stanley_control(rx.Node):
         self.controller.target_velocity = self.target_velocity
 
         import time
-        time.sleep(1) # wait for localization to start up and get first state
+        time.sleep(8) # wait for localization to start up and get first state
         state = self.localizer.get_state()
         #self.get_logger().info(f"State: {state}")
         #self.get_logger().info(f"Odom msg: {self.localizer._odom_msg}")
@@ -63,10 +64,6 @@ class stanley_control(rx.Node):
         state = self.localizer.get_state()
         x, y, yaw, vel = state
 
-        self.publish_goal_marker(self.goal)
-        self.publish_waypoints_marker(self.waypoints)
-        self.publish_trajectory_marker(self.controller.cx, self.controller.cy)
-
         dist = self.distance_to_goal(state)
         if dist <= self.goal_tolerance:
             if not self.reached_goal:
@@ -81,6 +78,12 @@ class stanley_control(rx.Node):
         steering, velocity = self.controller.compute_control(state)
         self.actuation.send_control(steering, velocity)
         self.get_logger().info(f"Steering: {steering}, Velocity: {velocity}")
+
+        if self.counter % 20 == 0: # publish markers every 2 seconds
+
+            self.publish_goal_marker(self.goal)
+            self.publish_waypoints_marker(self.waypoints)
+            self.publish_trajectory_marker(self.controller.cx, self.controller.cy)
 
 
     def distance_to_goal(self, state):
