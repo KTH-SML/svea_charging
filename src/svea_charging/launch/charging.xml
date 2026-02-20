@@ -4,7 +4,7 @@
     <arg name="map"             default="sml"/>
     <arg name="is_sim"          default="true"/>
     <arg name="use_foxglove"    default="true"/>
-    <arg name="initial_pose_x"  default="0.0"/> <!-- changed-->
+    <arg name="initial_pose_x"  default="-3.0"/> <!-- changed-->
     <arg name="initial_pose_y"  default="0.0"/> <!-- changed-->
     <arg name="initial_pose_a"  default="0.0" /> <!-- wrt to map--> <!-- changed-->
     <arg name="map_path" default="$(find-pkg-share svea_core)/maps/$(var map).yaml"/>
