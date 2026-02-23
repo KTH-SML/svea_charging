@@ -10,6 +10,22 @@ from svea_charging.controllers.stanleyController import StanleyController
 from svea_core.interfaces import ActuationInterface
 from svea_core import rosonic as rx
 from svea_core.interfaces import ShowPath
+from std_msgs.msg import Float32, String
+from rclpy.qos import (
+    QoSProfile,
+    QoSReliabilityPolicy,
+    QoSDurabilityPolicy,
+    QoSHistoryPolicy,
+)
+
+
+#QoS Profile
+qos_pubber = QoSProfile(
+    reliability=QoSReliabilityPolicy.RELIABLE,
+    durability=QoSDurabilityPolicy.VOLATILE,
+    history=QoSHistoryPolicy.KEEP_LAST,
+    depth=1,
+)
 
 class stanley_control(rx.Node):
     DELTA_TIME = 0.1
@@ -22,15 +38,19 @@ class stanley_control(rx.Node):
     localizer = LocalizationInterface()
     goal_tolerance = rx.Parameter(0.2) #m
 
+    #Publishers
+    goal_pub = rx.Publisher(Marker, 'goal_marker', qos_pubber)
+    path_pub = rx.Publisher(Marker, 'path_marker', qos_pubber)
+    traj_pub = rx.Publisher(Marker, 'traj_marker', qos_pubber)
+    cross_track_error_pub = rx.Publisher(Float32, 'cross_track_error', qos_pubber)
+    yaw_error_pub = rx.Publisher(Float32, 'yaw_error', qos_pubber)
+    velocity_error_pub = rx.Publisher(Float32, 'velocity_error', qos_pubber)
+    dist_to_goal = rx.Publisher(Float32, 'dist_to_goal', qos_pubber)
+
 
     def on_startup(self):
         self.reached_goal = False
         self.counter = 0
-
-        #create publishers
-        self.goal_pub = self.create_publisher(Marker, 'goal_marker', 10)
-        self.path_pub = self.create_publisher(Marker, 'path_marker', 10)
-        self.traj_pub = self.create_publisher(Marker, 'traj_marker', 10)
 
         self.controller = StanleyController()
         self.controller.target_velocity = self.target_velocity
@@ -82,7 +102,9 @@ class stanley_control(rx.Node):
             self.publish_goal_marker(self.goal)
             self.publish_waypoints_marker(self.waypoints)
             self.publish_trajectory_marker(self.controller.cx, self.controller.cy)
-
+            # Publish errors
+            self.publish_errors(x, y, yaw, vel)
+            self.dist_to_goal.publish(Float32(data=dist))
 
     def distance_to_goal(self, state):
         x, y, _, _ = state
@@ -175,6 +197,39 @@ class stanley_control(rx.Node):
 
         self.traj_pub.publish(msg)
 
+
+    def publish_errors(self, x, y, yaw, vel):
+        """Compute cross-track, yaw, and velocity errors relative to the trajectory."""
+        # Find the closest point on the trajectory
+        try:
+            idx = self.controller.target_idx
+            traj_x = self.controller.cx
+            traj_y = self.controller.cy
+        except AttributeError:
+            return  # Trajectory not yet initialized
+        
+        # Cross-track error
+        cte = np.hypot(traj_x[idx] - x, traj_y[idx] - y)
+        self.cross_track_error_pub.publish(Float32(data=cte))
+
+        # Heading error (difference between robot yaw and path tangent at closest point)
+        if idx < len(traj_x) - 1:
+            path_yaw = np.arctan2(traj_y[idx + 1] - traj_y[idx],
+                                  traj_x[idx + 1] - traj_x[idx])
+        else:
+            path_yaw = np.arctan2(traj_y[idx] - traj_y[idx - 1],
+                                  traj_x[idx] - traj_x[idx - 1])
+
+        yaw_err = path_yaw - yaw
+        while yaw_err > np.pi:
+            yaw_err -= 2 * np.pi
+        while yaw_err < -np.pi:
+            yaw_err += 2 * np.pi
+        self.yaw_error_pub.publish(Float32(data=yaw_err))
+
+        # Velocity error
+        vel_err = self.controller.target_velocity - vel
+        self.velocity_error_pub.publish(Float32(data=vel_err))
 
 if __name__ == '__main__':
     stanley_control.main()
