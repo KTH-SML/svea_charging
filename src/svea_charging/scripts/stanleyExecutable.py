@@ -14,13 +14,12 @@ from svea_core.interfaces import ShowPath
 class stanley_control(rx.Node):
     DELTA_TIME = 0.1
 
-    endPoint = rx.Parameter('[0.5, -1.2]')
+    endPoint = rx.Parameter('[2.0, -2.5]') #0.5, -1.2 irl
     target_velocity = rx.Parameter(0.4)
     
     # Interfaces
     actuation = ActuationInterface()
     localizer = LocalizationInterface()
-
     goal_tolerance = rx.Parameter(0.2) #m
 
 
@@ -39,8 +38,6 @@ class stanley_control(rx.Node):
         import time
         time.sleep(8) # wait for localization to start up and get first state
         state = self.localizer.get_state()
-        #self.get_logger().info(f"State: {state}")
-        #self.get_logger().info(f"Odom msg: {self.localizer._odom_msg}")
         x, y, yaw, vel = state
 
         self.goal = eval(self.endPoint)
@@ -53,7 +50,6 @@ class stanley_control(rx.Node):
         #self.publish_waypoints_marker(self.waypoints)
 
         self.controller.update_traj(state, self.waypoints)
-
         self.create_timer(self.DELTA_TIME, self.loop)
 
 
@@ -69,7 +65,6 @@ class stanley_control(rx.Node):
             if not self.reached_goal:
                 self.get_logger().info("Reached goal!")
                 self.reached_goal = True
-            #self.actuation.send_control(0.0, 0.0)
 
         #self.update_goal()
         self.controller.update_traj(state, self.waypoints)
@@ -83,8 +78,7 @@ class stanley_control(rx.Node):
         self.actuation.send_control(steering, velocity)
         
 
-        if self.counter % 20 == 0: # publish markers every 2 seconds
-
+        if self.counter % 10 == 0: # publish markers every 1 seconds
             self.publish_goal_marker(self.goal)
             self.publish_waypoints_marker(self.waypoints)
             self.publish_trajectory_marker(self.controller.cx, self.controller.cy)
