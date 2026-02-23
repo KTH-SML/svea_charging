@@ -21,7 +21,7 @@ class stanley_control(rx.Node):
     actuation = ActuationInterface()
     localizer = LocalizationInterface()
 
-    goal_tolerance = rx.Parameter(0.5) #m
+    goal_tolerance = rx.Parameter(0.2) #m
 
 
     def on_startup(self):
@@ -69,15 +69,19 @@ class stanley_control(rx.Node):
             if not self.reached_goal:
                 self.get_logger().info("Reached goal!")
                 self.reached_goal = True
-            self.actuation.send_control(0.0, 0.0)
-            return
+            #self.actuation.send_control(0.0, 0.0)
 
         #self.update_goal()
         self.controller.update_traj(state, self.waypoints)
 
-        steering, velocity = self.controller.compute_control(state)
+        if not self.reached_goal:
+            steering, velocity = self.controller.compute_control(state)
+            self.get_logger().info(f"Steering: {steering}, Velocity: {velocity}")
+        else:
+            steering, velocity = 0.0, 0.0
+
         self.actuation.send_control(steering, velocity)
-        self.get_logger().info(f"Steering: {steering}, Velocity: {velocity}")
+        
 
         if self.counter % 20 == 0: # publish markers every 2 seconds
 
