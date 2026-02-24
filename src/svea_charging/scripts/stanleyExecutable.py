@@ -197,8 +197,18 @@ class stanley_control(rx.Node):
 
         self.traj_pub.publish(msg)
 
-
     def publish_errors(self, x, y, yaw, vel):
+        self.cross_track_error_pub.publish(Float32(data=self.controller.cross_track_error)) #m
+        self.yaw_error_pub.publish(Float32(data=np.rad2deg(self.controller.yaw_error))) #degrees
+
+        # Velocity error
+        vel_err = self.controller.target_velocity - vel
+        self.velocity_error_pub.publish(Float32(data=vel_err))
+
+
+
+
+    def publish_errorsBeta(self, x, y, yaw, vel):
         """Compute cross-track, yaw, and velocity errors relative to the trajectory."""
         # Find the closest point on the trajectory
         try:
