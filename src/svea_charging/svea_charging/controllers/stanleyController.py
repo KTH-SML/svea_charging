@@ -59,6 +59,9 @@ class StanleyController:
         self.error_integral = 0.0
         self.error_prev = 0.0
 
+        self.cross_track_error = 0.0
+        self.yaw_error = 0.0
+
     def update(self, state):
         """
         Update the state of the vehicle.
@@ -80,7 +83,6 @@ class StanleyController:
         :return: (float)
         """
         error = self.target_velocity - self.v
-        
 
         error_i = (error + self.error_prev) / 2 * 0.01
 
@@ -103,12 +105,15 @@ class StanleyController:
         :return: (float, int)
         """
         current_target_idx, error_front_axle = self.calc_target_index(cx, cy)
+        self.cross_track_error = error_front_axle # for providing output to external
+
 
         if last_target_idx >= current_target_idx:
             current_target_idx = last_target_idx
 
         # theta_e corrects the heading error
         theta_e = self.normalize_angle(cyaw[current_target_idx] - self.yaw)
+        self.yaw_error = theta_e # for providing output to external
         # theta_d corrects the cross track error
         theta_d = np.arctan2(k * error_front_axle, self.v)
         # Steering control
