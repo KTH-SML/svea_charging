@@ -207,39 +207,5 @@ class stanley_control(rx.Node):
 
 
 
-
-    def publish_errorsBeta(self, x, y, yaw, vel):
-        """Compute cross-track, yaw, and velocity errors relative to the trajectory."""
-        # Find the closest point on the trajectory
-        try:
-            idx = self.controller.target_idx
-            traj_x = self.controller.cx
-            traj_y = self.controller.cy
-        except AttributeError:
-            return  # Trajectory not yet initialized
-        
-        # Cross-track error
-        cte = np.hypot(traj_x[idx] - x, traj_y[idx] - y)
-        self.cross_track_error_pub.publish(Float32(data=cte))
-
-        # Heading error (difference between robot yaw and path tangent at closest point)
-        if idx < len(traj_x) - 1:
-            path_yaw = np.arctan2(traj_y[idx + 1] - traj_y[idx],
-                                  traj_x[idx + 1] - traj_x[idx])
-        else:
-            path_yaw = np.arctan2(traj_y[idx] - traj_y[idx - 1],
-                                  traj_x[idx] - traj_x[idx - 1])
-
-        yaw_err = path_yaw - yaw
-        while yaw_err > np.pi:
-            yaw_err -= 2 * np.pi
-        while yaw_err < -np.pi:
-            yaw_err += 2 * np.pi
-        self.yaw_error_pub.publish(Float32(data=yaw_err))
-
-        # Velocity error
-        vel_err = self.controller.target_velocity - vel
-        self.velocity_error_pub.publish(Float32(data=vel_err))
-
 if __name__ == '__main__':
     stanley_control.main()
