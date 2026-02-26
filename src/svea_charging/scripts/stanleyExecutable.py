@@ -32,7 +32,6 @@ class stanley_control(rx.Node):
 
     endPoint = rx.Parameter('[2.0, -2.5]') #0.5, -1.2 irl
     target_velocity = rx.Parameter(0.4)
-    
     # Interfaces
     actuation = ActuationInterface()
     localizer = LocalizationInterface()
