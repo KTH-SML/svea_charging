@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 import rclpy
 from geometry_msgs.msg import Pose, PoseArray
+from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import Int32MultiArray, String
 
 from svea_core import rosonic as rx
@@ -52,7 +53,13 @@ def generate_marker(
     cv2.imwrite(str(output_path), marker_img)
 
 
-def create_detector(aruco, dictionary):
+def create_detector(aruco, dictionary, *, use_aruco_detector_api: bool = False):
+    # Some OpenCV builds (especially in containers) segfault when constructing
+    # DetectorParameters. Avoid touching it unless we explicitly use the newer
+    # ArucoDetector API.
+    if not use_aruco_detector_api:
+        return None, None
+
     if hasattr(aruco, "DetectorParameters"):
         parameters = aruco.DetectorParameters()
     else:
@@ -62,7 +69,7 @@ def create_detector(aruco, dictionary):
     if hasattr(parameters, "cornerRefinementMethod") and hasattr(aruco, "CORNER_REFINE_SUBPIX"):
         parameters.cornerRefinementMethod = aruco.CORNER_REFINE_SUBPIX
 
-    if hasattr(aruco, "ArucoDetector"):
+    if use_aruco_detector_api and hasattr(aruco, "ArucoDetector"):
         detector = aruco.ArucoDetector(dictionary, parameters)
         return detector, None
 
@@ -72,6 +79,8 @@ def create_detector(aruco, dictionary):
 def detect_markers(aruco, detector, parameters, dictionary, frame):
     if detector is not None:
         return detector.detectMarkers(frame)
+    if parameters is None:
+        return aruco.detectMarkers(frame, dictionary)
     return aruco.detectMarkers(frame, dictionary, parameters=parameters)
 
 
@@ -185,17 +194,24 @@ class aruco_camera_test(rx.Node):
     display = rx.Parameter(False)
     loop_hz = rx.Parameter(30.0)
     frame_id = rx.Parameter("camera")
+    camera_backend = rx.Parameter("ANY")  # ANY, V4L2, GSTREAMER, FFMPEG
+    use_aruco_detector_api = rx.Parameter(False)
+    publish_debug_image = rx.Parameter(True)
+    jpeg_quality = rx.Parameter(80)
 
     detected_ids_pub = rx.Publisher(Int32MultiArray, "aruco/detected_ids")
     poses_pub = rx.Publisher(PoseArray, "aruco/poses")
     status_pub = rx.Publisher(String, "aruco/status")
+    debug_image_pub = rx.Publisher(CompressedImage, "aruco/debug_image/compressed")
 
     def on_startup(self):
         self.cap = None
         self._warned_fallback_intrinsics = False
 
         try:
+            self.get_logger().info("Initializing OpenCV ArUco module...")
             self.aruco = get_aruco_module()
+            self.get_logger().info(f"Loading dictionary: {self.dictionary}")
             self.dictionary_obj = get_dictionary(self.aruco, str(self.dictionary))
         except Exception as exc:
             self.get_logger().error(f"ArUco setup failed: {exc}")
@@ -215,8 +231,13 @@ class aruco_camera_test(rx.Node):
             except Exception as exc:
                 self.get_logger().error(f"Marker generation failed: {exc}")
 
+        self.get_logger().info(
+            f"Creating detector (use_aruco_detector_api={bool(self.use_aruco_detector_api)})..."
+        )
         self.detector, self.detector_parameters = create_detector(
-            self.aruco, self.dictionary_obj
+            self.aruco,
+            self.dictionary_obj,
+            use_aruco_detector_api=bool(self.use_aruco_detector_api),
         )
 
         marker_length = float(self.marker_length_m)
@@ -228,6 +249,8 @@ class aruco_camera_test(rx.Node):
         calib_str = str(self.calibration_file).strip()
         calib_path = Path(calib_str) if calib_str else None
         try:
+            if calib_path is not None:
+                self.get_logger().info(f"Loading calibration file: {calib_path}")
             self.calibrated_camera_matrix, self.calibrated_dist_coeffs = load_calibration(
                 calib_path
             )
@@ -235,18 +258,37 @@ class aruco_camera_test(rx.Node):
             self.get_logger().error(f"Calibration load failed: {exc}")
             self.calibrated_camera_matrix, self.calibrated_dist_coeffs = None, None
 
-        self.cap = cv2.VideoCapture(int(self.camera_index))
+        backend_name = str(self.camera_backend).upper()
+        backend_map = {
+            "ANY": getattr(cv2, "CAP_ANY", 0),
+            "V4L2": getattr(cv2, "CAP_V4L2", getattr(cv2, "CAP_ANY", 0)),
+            "GSTREAMER": getattr(cv2, "CAP_GSTREAMER", getattr(cv2, "CAP_ANY", 0)),
+            "FFMPEG": getattr(cv2, "CAP_FFMPEG", getattr(cv2, "CAP_ANY", 0)),
+        }
+        backend = backend_map.get(backend_name, getattr(cv2, "CAP_ANY", 0))
+        self.get_logger().info(
+            f"Opening camera index {int(self.camera_index)} with backend={backend_name}..."
+        )
+        self.cap = cv2.VideoCapture(int(self.camera_index), backend)
         if not self.cap.isOpened():
             self.get_logger().error(
-                f"Could not open camera index {int(self.camera_index)}"
+                f"Could not open camera index {int(self.camera_index)} with backend={backend_name}"
             )
+            self.cap.release()
+            self.cap = None
+            return
+
+        self.get_logger().info("Camera opened. Performing first frame read...")
+        ok, _ = self.cap.read()
+        if not ok:
+            self.get_logger().error("Camera opened but first frame read failed.")
             self.cap.release()
             self.cap = None
             return
 
         self.get_logger().info(
             "ArUco camera node started "
-            f"(camera_index={int(self.camera_index)}, dictionary={self.dictionary})"
+            f"(camera_index={int(self.camera_index)}, backend={backend_name}, dictionary={self.dictionary})"
         )
         if self._marker_length_m is not None and self.calibrated_camera_matrix is None:
             self.get_logger().warning(
@@ -278,6 +320,22 @@ class aruco_camera_test(rx.Node):
         msg.header.frame_id = str(self.frame_id)
         msg.header.stamp = self.get_clock().now().to_msg()
         return msg
+
+    def _publish_debug_image(self, frame):
+        if not bool(self.publish_debug_image):
+            return
+        quality = int(max(10, min(100, int(self.jpeg_quality))))
+        ok, enc = cv2.imencode(
+            ".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), quality]
+        )
+        if not ok:
+            return
+        msg = CompressedImage()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = str(self.frame_id)
+        msg.format = "jpeg"
+        msg.data = enc.tobytes()
+        self.debug_image_pub.publish(msg)
 
     def loop(self):
         if self.cap is None:
@@ -381,7 +439,7 @@ class aruco_camera_test(rx.Node):
         self.poses_pub.publish(pose_array)
         self._publish_status(status_text)
 
-        if bool(self.display):
+        if bool(self.display) or bool(self.publish_debug_image):
             cv2.putText(
                 frame,
                 status_text,
@@ -392,6 +450,10 @@ class aruco_camera_test(rx.Node):
                 2,
                 cv2.LINE_AA,
             )
+
+        self._publish_debug_image(frame)
+
+        if bool(self.display):
             cv2.imshow("ArUco Camera Test", frame)
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
