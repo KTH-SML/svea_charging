@@ -1,15 +1,14 @@
 <?xml version="1.0"?>
 <launch>
     <!-- Launch file arguments -->
-    <arg name="map"             default="floor2"/>
+    <arg name="map"             default="sml"/>
     <arg name="is_sim"          default="true"/>
     <arg name="use_foxglove"    default="true"/>
-    <arg name="initial_pose_x"  default="0"/> <!-- changed-->
-    <arg name="initial_pose_y"  default="0"/> <!-- changed-->
-    <arg name="initial_pose_a"  default="0" /> <!-- wrt to map--> <!-- changed-->
+    <arg name="initial_pose_x"  default="-2.5"/> <!-- changed-->
+    <arg name="initial_pose_y"  default="0.0"/> <!-- changed-->
+    <arg name="initial_pose_a"  default="0.0" /> <!-- wrt to map--> <!-- changed-->
     <arg name="map_path" default="$(find-pkg-share svea_core)/maps/$(var map).yaml"/>
     <arg name="state" default="[-7.4, -15.3, 0.9, 0.0]" /> <!-- should be changed-->
-    <arg name="points" default="['[-2.3, -7.1]', '[10.5, 11.7]', '[5.7, 15.0]', '[-7.0, -4.0]']" /> <!-- should be changed-->
 
     <!-- Start Map Server and Foxglove -->
     <include file="$(find-pkg-share svea_core)/launch/map_and_foxglove.xml">
@@ -17,8 +16,11 @@
         <arg name="use_foxglove" value="$(var use_foxglove)" />
     </include>   
     
+    <let name="name" value="self"/>
+
     <!-- Start Svea Core -->
-    <include file="$(find-pkg-share svea_core)/launch/svea_launch.xml">
+    <include file="$(find-pkg-share svea_core)/launch/svea_mocap.xml">
+        <arg name="name" value="$(var name)" />
         <arg name="is_sim" value="$(var is_sim)" />
         <arg name="initial_pose_x" value="$(var initial_pose_x)" />
         <arg name="initial_pose_y" value="$(var initial_pose_y)" />
@@ -27,12 +29,28 @@
         <arg name="map" value="$(var map)" />
     </include>   
 
-    <!-- Start stanleyController -->
-    <node name="stanleyExecutable" pkg="svea_charging" exec="stanleyExecutable.py" output="screen">
-        <param name="use_rviz" value="$(var use_foxglove)"/>
-        <param name="is_sim" value="$(var is_sim)"/>
-        <param name="state" value="$(var state)" />
-        <param name="points" value="$(var points)" />
-    </node>
+    <group if="$(var is_sim)">
+        <push-ros-namespace namespace="$(var name)"/>
+        <!-- Start stanleyController -->
+        <node name="stanleyExecutable" pkg="svea_charging" exec="stanleyExecutable.py" output="screen">
+            <param name="use_rviz" value="$(var use_foxglove)"/>
+            <param name="is_sim" value="$(var is_sim)"/>
+            <!-- Allow namespace -->
+            <param name="steering_top" value="lli/ctrl/steering"/>
+            <param name="throttle_top" value="lli/ctrl/throttle"/>
+            <param name="highgear_top" value="lli/ctrl/highgear"/>
+            <param name="diff_top" value="lli/ctrl/diff"/>
+        </node>
+    </group>
+
+    <group unless="$(var is_sim)">
+        <push-ros-namespace namespace="$(var name)"/>
+        <!-- Start stanleyController -->
+        <node name="stanleyExecutable" pkg="svea_charging" exec="stanleyExecutable.py" output="screen">
+            <param name="use_rviz" value="$(var use_foxglove)"/>
+            <param name="is_sim" value="$(var is_sim)"/>
+            <param name="localization/base_frame" value="$(var name)/base_link"/>
+        </node>
+    </group>
 
 </launch>
