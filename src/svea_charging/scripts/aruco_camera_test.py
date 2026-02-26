@@ -1,24 +1,17 @@
 #!/usr/bin/env python3
-"""
-Simple ArUco test utility.
-
-Features:
-1. Generate an ArUco marker image.
-2. Open the laptop camera and detect ArUco markers in real time.
-
-Usage examples:
-    python3 aruco_camera_test.py
-    python3 aruco_camera_test.py --marker-id 7 --dictionary DICT_4X4_50
-    python3 aruco_camera_test.py --camera-index 1 --no-generate
-"""
+"""ROS 2 ArUco camera test node for quick local webcam-based detection."""
 
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 
 import cv2
 import numpy as np
+import rclpy
+from geometry_msgs.msg import Pose, PoseArray
+from std_msgs.msg import Int32MultiArray, String
+
+from svea_core import rosonic as rx
 
 
 def get_aruco_module():
@@ -128,6 +121,41 @@ def rvec_to_euler_deg(rvec):
     return np.degrees([roll, pitch, yaw])
 
 
+def rotation_matrix_to_quaternion(rot_mat):
+    """Return quaternion as [x, y, z, w]."""
+    trace = rot_mat[0, 0] + rot_mat[1, 1] + rot_mat[2, 2]
+    if trace > 0.0:
+        s = 0.5 / np.sqrt(trace + 1.0)
+        w = 0.25 / s
+        x = (rot_mat[2, 1] - rot_mat[1, 2]) * s
+        y = (rot_mat[0, 2] - rot_mat[2, 0]) * s
+        z = (rot_mat[1, 0] - rot_mat[0, 1]) * s
+    elif rot_mat[0, 0] > rot_mat[1, 1] and rot_mat[0, 0] > rot_mat[2, 2]:
+        s = 2.0 * np.sqrt(1.0 + rot_mat[0, 0] - rot_mat[1, 1] - rot_mat[2, 2])
+        w = (rot_mat[2, 1] - rot_mat[1, 2]) / s
+        x = 0.25 * s
+        y = (rot_mat[0, 1] + rot_mat[1, 0]) / s
+        z = (rot_mat[0, 2] + rot_mat[2, 0]) / s
+    elif rot_mat[1, 1] > rot_mat[2, 2]:
+        s = 2.0 * np.sqrt(1.0 + rot_mat[1, 1] - rot_mat[0, 0] - rot_mat[2, 2])
+        w = (rot_mat[0, 2] - rot_mat[2, 0]) / s
+        x = (rot_mat[0, 1] + rot_mat[1, 0]) / s
+        y = 0.25 * s
+        z = (rot_mat[1, 2] + rot_mat[2, 1]) / s
+    else:
+        s = 2.0 * np.sqrt(1.0 + rot_mat[2, 2] - rot_mat[0, 0] - rot_mat[1, 1])
+        w = (rot_mat[1, 0] - rot_mat[0, 1]) / s
+        x = (rot_mat[0, 2] + rot_mat[2, 0]) / s
+        y = (rot_mat[1, 2] + rot_mat[2, 1]) / s
+        z = 0.25 * s
+    return np.array([x, y, z, w], dtype=float)
+
+
+def rvec_to_quaternion_xyzw(rvec):
+    rot_mat, _ = cv2.Rodrigues(rvec)
+    return rotation_matrix_to_quaternion(rot_mat)
+
+
 def estimate_pose_for_markers(aruco, corners, marker_length_m, camera_matrix, dist_coeffs):
     if hasattr(aruco, "estimatePoseSingleMarkers"):
         rvecs, tvecs, _ = aruco.estimatePoseSingleMarkers(
@@ -143,209 +171,233 @@ def draw_axes(frame, camera_matrix, dist_coeffs, rvec, tvec, axis_length_m):
         cv2.drawFrameAxes(frame, camera_matrix, dist_coeffs, rvec, tvec, axis_length_m)
 
 
-def run_camera_detection(
-    aruco,
-    dictionary,
-    camera_index: int,
-    marker_length_m: float | None,
-    calibration_file: Path | None,
-    focal_length_px: float | None,
-) -> None:
-    cap = cv2.VideoCapture(camera_index)
-    if not cap.isOpened():
-        raise RuntimeError(
-            f"Kunde inte öppna kamera med index {camera_index}. Testa t.ex. --camera-index 1"
+class aruco_camera_test(rx.Node):
+    dictionary = rx.Parameter("DICT_4X4_50")
+    marker_id = rx.Parameter(0)
+    marker_size_px = rx.Parameter(400)
+    output = rx.Parameter("aruco_marker.png")
+    generate_marker_on_startup = rx.Parameter(False)
+
+    camera_index = rx.Parameter(0)
+    marker_length_m = rx.Parameter(-1.0)
+    calibration_file = rx.Parameter("")
+    focal_length_px = rx.Parameter(-1.0)
+    display = rx.Parameter(False)
+    loop_hz = rx.Parameter(30.0)
+    frame_id = rx.Parameter("camera")
+
+    detected_ids_pub = rx.Publisher(Int32MultiArray, "aruco/detected_ids")
+    poses_pub = rx.Publisher(PoseArray, "aruco/poses")
+    status_pub = rx.Publisher(String, "aruco/status")
+
+    def on_startup(self):
+        self.cap = None
+        self._warned_fallback_intrinsics = False
+
+        try:
+            self.aruco = get_aruco_module()
+            self.dictionary_obj = get_dictionary(self.aruco, str(self.dictionary))
+        except Exception as exc:
+            self.get_logger().error(f"ArUco setup failed: {exc}")
+            return
+
+        if self.generate_marker_on_startup:
+            try:
+                out_path = Path(str(self.output))
+                generate_marker(
+                    self.aruco,
+                    self.dictionary_obj,
+                    int(self.marker_id),
+                    int(self.marker_size_px),
+                    out_path,
+                )
+                self.get_logger().info(f"Generated marker image: {out_path.resolve()}")
+            except Exception as exc:
+                self.get_logger().error(f"Marker generation failed: {exc}")
+
+        self.detector, self.detector_parameters = create_detector(
+            self.aruco, self.dictionary_obj
         )
 
-    detector, parameters = create_detector(aruco, dictionary)
-    calibrated_camera_matrix, calibrated_dist_coeffs = load_calibration(calibration_file)
-    warned_fallback_intrinsics = False
+        marker_length = float(self.marker_length_m)
+        self._marker_length_m = marker_length if marker_length > 0.0 else None
 
-    print("Kameran startad. Visa en ArUco-marker mot kameran. Tryck 'q' för att avsluta.")
-    if marker_length_m is not None:
-        if calibrated_camera_matrix is not None:
-            print(f"Pose estimation aktiv (markerstorlek: {marker_length_m} m, kalibrerad kamera).")
-        else:
-            print(
-                "Pose estimation aktiv utan kalibrering (approximerade intrinsics). "
-                "Avstånd/rotation blir ungefärliga."
+        focal_length = float(self.focal_length_px)
+        self._focal_length_px = focal_length if focal_length > 0.0 else None
+
+        calib_str = str(self.calibration_file).strip()
+        calib_path = Path(calib_str) if calib_str else None
+        try:
+            self.calibrated_camera_matrix, self.calibrated_dist_coeffs = load_calibration(
+                calib_path
+            )
+        except Exception as exc:
+            self.get_logger().error(f"Calibration load failed: {exc}")
+            self.calibrated_camera_matrix, self.calibrated_dist_coeffs = None, None
+
+        self.cap = cv2.VideoCapture(int(self.camera_index))
+        if not self.cap.isOpened():
+            self.get_logger().error(
+                f"Could not open camera index {int(self.camera_index)}"
+            )
+            self.cap.release()
+            self.cap = None
+            return
+
+        self.get_logger().info(
+            "ArUco camera node started "
+            f"(camera_index={int(self.camera_index)}, dictionary={self.dictionary})"
+        )
+        if self._marker_length_m is not None and self.calibrated_camera_matrix is None:
+            self.get_logger().warning(
+                "Pose estimation uses fallback intrinsics (no calibration file provided)."
             )
 
-    try:
-        while True:
-            ok, frame = cap.read()
-            if not ok:
-                print("Kunde inte läsa frame från kameran.")
-                break
+        period = 1.0 / max(float(self.loop_hz), 1.0)
+        self.create_timer(period, self.loop)
 
-            corners, ids, rejected = detect_markers(
-                aruco, detector, parameters, dictionary, frame
-            )
+    def on_shutdown(self):
+        if getattr(self, "cap", None) is not None:
+            self.cap.release()
+            self.cap = None
+        if bool(self.display):
+            cv2.destroyAllWindows()
 
-            if ids is not None and len(ids) > 0:
-                aruco.drawDetectedMarkers(frame, corners, ids)
-                ids_list = [int(i) for i in ids.flatten()]
-                text = f"Detected IDs: {ids_list}"
-                color = (0, 200, 0)
+    def _publish_status(self, text: str):
+        msg = String()
+        msg.data = text
+        self.status_pub.publish(msg)
 
-                if marker_length_m is not None:
-                    if calibrated_camera_matrix is None:
-                        if not warned_fallback_intrinsics:
-                            print(
-                                "Ingen kalibrering angiven. Använder approximerad kameramodell "
-                                "för pose estimation."
-                            )
-                            warned_fallback_intrinsics = True
-                        camera_matrix, dist_coeffs = get_fallback_camera_matrix(
-                            frame.shape, focal_length_px
-                        )
-                    else:
-                        camera_matrix, dist_coeffs = (
-                            calibrated_camera_matrix,
-                            calibrated_dist_coeffs,
-                        )
+    def _publish_ids(self, ids_list):
+        msg = Int32MultiArray()
+        msg.data = [int(i) for i in ids_list]
+        self.detected_ids_pub.publish(msg)
 
-                    rvecs, tvecs = estimate_pose_for_markers(
-                        aruco, corners, marker_length_m, camera_matrix, dist_coeffs
+    def _empty_pose_array(self):
+        msg = PoseArray()
+        msg.header.frame_id = str(self.frame_id)
+        msg.header.stamp = self.get_clock().now().to_msg()
+        return msg
+
+    def loop(self):
+        if self.cap is None:
+            return
+
+        ok, frame = self.cap.read()
+        if not ok:
+            self._publish_ids([])
+            self.poses_pub.publish(self._empty_pose_array())
+            self._publish_status("camera_read_failed")
+            return
+
+        corners, ids, rejected = detect_markers(
+            self.aruco,
+            self.detector,
+            self.detector_parameters,
+            self.dictionary_obj,
+            frame,
+        )
+
+        ids_list = []
+        pose_array = self._empty_pose_array()
+        status_text = ""
+        overlay_color = (0, 0, 255)
+
+        if ids is not None and len(ids) > 0:
+            ids_list = [int(i) for i in ids.flatten()]
+            self.aruco.drawDetectedMarkers(frame, corners, ids)
+            status_text = f"Detected IDs: {ids_list}"
+            overlay_color = (0, 200, 0)
+
+            if self._marker_length_m is not None:
+                if self.calibrated_camera_matrix is None:
+                    camera_matrix, dist_coeffs = get_fallback_camera_matrix(
+                        frame.shape, self._focal_length_px
+                    )
+                    self._warned_fallback_intrinsics = True
+                else:
+                    camera_matrix, dist_coeffs = (
+                        self.calibrated_camera_matrix,
+                        self.calibrated_dist_coeffs,
                     )
 
-                    for i, marker_id in enumerate(ids.flatten()):
-                        rvec = rvecs[i]
-                        tvec = tvecs[i]
-                        distance_m = float(np.linalg.norm(tvec))
-                        roll_deg, pitch_deg, yaw_deg = rvec_to_euler_deg(rvec)
-                        draw_axes(
+                rvecs, tvecs = estimate_pose_for_markers(
+                    self.aruco,
+                    corners,
+                    self._marker_length_m,
+                    camera_matrix,
+                    dist_coeffs,
+                )
+
+                for i, marker_id in enumerate(ids.flatten()):
+                    rvec = rvecs[i]
+                    tvec = tvecs[i]
+                    txyz = np.asarray(tvec).reshape(-1)
+                    qxyzw = rvec_to_quaternion_xyzw(rvec)
+                    roll_deg, pitch_deg, yaw_deg = rvec_to_euler_deg(rvec)
+
+                    pose = Pose()
+                    pose.position.x = float(txyz[0])
+                    pose.position.y = float(txyz[1])
+                    pose.position.z = float(txyz[2])
+                    pose.orientation.x = float(qxyzw[0])
+                    pose.orientation.y = float(qxyzw[1])
+                    pose.orientation.z = float(qxyzw[2])
+                    pose.orientation.w = float(qxyzw[3])
+                    pose_array.poses.append(pose)
+
+                    draw_axes(
+                        frame,
+                        camera_matrix,
+                        dist_coeffs,
+                        rvec,
+                        tvec,
+                        axis_length_m=max(self._marker_length_m * 0.5, 0.02),
+                    )
+
+                    anchor = corners[i][0][0]
+                    x_px, y_px = int(anchor[0]), int(anchor[1])
+                    distance_m = float(np.linalg.norm(txyz))
+                    lines = [
+                        f"ID {int(marker_id)}: {distance_m:.2f} m",
+                        f"R/P/Y: {roll_deg:.0f}/{pitch_deg:.0f}/{yaw_deg:.0f} deg",
+                    ]
+                    for line_idx, line in enumerate(lines):
+                        cv2.putText(
                             frame,
-                            camera_matrix,
-                            dist_coeffs,
-                            rvec,
-                            tvec,
-                            axis_length_m=max(marker_length_m * 0.5, 0.02),
+                            line,
+                            (x_px, y_px - 12 - line_idx * 20),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5,
+                            (255, 220, 0),
+                            2,
+                            cv2.LINE_AA,
                         )
+        else:
+            rejected_count = len(rejected) if rejected is not None else 0
+            status_text = f"No markers | rejected: {rejected_count}"
 
-                        anchor = corners[i][0][0]
-                        x_px, y_px = int(anchor[0]), int(anchor[1])
-                        lines = [
-                            f"ID {int(marker_id)}: {distance_m:.2f} m",
-                            f"R/P/Y: {roll_deg:.0f}/{pitch_deg:.0f}/{yaw_deg:.0f} deg",
-                        ]
-                        for line_idx, line in enumerate(lines):
-                            cv2.putText(
-                                frame,
-                                line,
-                                (x_px, y_px - 12 - line_idx * 20),
-                                cv2.FONT_HERSHEY_SIMPLEX,
-                                0.5,
-                                (255, 220, 0),
-                                2,
-                                cv2.LINE_AA,
-                            )
-            else:
-                text = f"No markers | rejected: {len(rejected)}"
-                color = (0, 0, 255)
+        self._publish_ids(ids_list)
+        self.poses_pub.publish(pose_array)
+        self._publish_status(status_text)
 
+        if bool(self.display):
             cv2.putText(
                 frame,
-                text,
+                status_text,
                 (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.8,
-                color,
+                overlay_color,
                 2,
                 cv2.LINE_AA,
             )
-
             cv2.imshow("ArUco Camera Test", frame)
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
-                break
-    finally:
-        cap.release()
-        cv2.destroyAllWindows()
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Generate and detect ArUco markers.")
-    parser.add_argument(
-        "--dictionary",
-        default="DICT_4X4_50",
-        help="ArUco dictionary, t.ex. DICT_4X4_50 eller DICT_6X6_250",
-    )
-    parser.add_argument(
-        "--marker-id",
-        type=int,
-        default=0,
-        help="ID på markern som genereras",
-    )
-    parser.add_argument(
-        "--marker-size-px",
-        type=int,
-        default=400,
-        help="Storlek på genererad marker i pixlar",
-    )
-    parser.add_argument(
-        "--output",
-        type=Path,
-        default=Path("aruco_marker.png"),
-        help="Sökväg till genererad markerbild",
-    )
-    parser.add_argument(
-        "--camera-index",
-        type=int,
-        default=0,
-        help="Kameraindex för laptopkamera (oftast 0)",
-    )
-    parser.add_argument(
-        "--no-generate",
-        action="store_true",
-        help="Skippa generering av marker och starta bara kameradetektion",
-    )
-    parser.add_argument(
-        "--marker-length-m",
-        type=float,
-        default=None,
-        help="Fysisk markerstorlek i meter (t.ex. 0.05) för pose estimation",
-    )
-    parser.add_argument(
-        "--calibration-file",
-        type=Path,
-        default=None,
-        help="Valfri .npz med 'camera_matrix' och 'dist_coeffs' för bättre pose estimation",
-    )
-    parser.add_argument(
-        "--focal-length-px",
-        type=float,
-        default=None,
-        help="Valfri approximerad focal length i pixlar om kalibrering saknas",
-    )
-    return parser.parse_args()
-
-
-def main():
-    args = parse_args()
-    aruco = get_aruco_module()
-    dictionary = get_dictionary(aruco, args.dictionary)
-
-    if not args.no_generate:
-        generate_marker(
-            aruco=aruco,
-            dictionary=dictionary,
-            marker_id=args.marker_id,
-            marker_size_px=args.marker_size_px,
-            output_path=args.output,
-        )
-        print(f"Marker sparad: {args.output.resolve()}")
-        print("Skriv ut eller visa bilden på en skärm för att testa detektion.")
-
-    run_camera_detection(
-        aruco=aruco,
-        dictionary=dictionary,
-        camera_index=args.camera_index,
-        marker_length_m=args.marker_length_m,
-        calibration_file=args.calibration_file,
-        focal_length_px=args.focal_length_px,
-    )
+                self.get_logger().info("Shutdown requested from display window (q).")
+                rclpy.shutdown()
 
 
 if __name__ == "__main__":
-    main()
+    aruco_camera_test.main()

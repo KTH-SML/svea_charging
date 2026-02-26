@@ -9,6 +9,8 @@
 
   <depend>svea_core</depend>
   <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
   
 
   <export>
