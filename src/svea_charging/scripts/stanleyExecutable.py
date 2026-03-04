@@ -29,9 +29,9 @@ qos_pubber = QoSProfile(
 class stanley_control(rx.Node):
     DELTA_TIME = 0.1
 
-    endPoint = rx.Parameter('[1.360, 1.382]') #x= -1.360,y=  1.382, yaw = 90deg
+    endPoint = rx.Parameter('[0, 0]') #x= -1.360,y=  1.382, yaw = 90deg
     target_velocity = rx.Parameter(0.4)
-    use_aruco_goal = rx.Parameter(False)
+    use_aruco_goal = rx.Parameter(True)
     aruco_goal_topic = rx.Parameter("aruco/poses")
     aruco_pose_is_car_in_marker_frame = rx.Parameter(True)
     aruco_goal_offset = rx.Parameter(0.35)  # stop short of marker center [m]
@@ -105,10 +105,13 @@ class stanley_control(rx.Node):
         mx = 0.5*(x + self.goal[0])
         my = 0.5*(y + self.goal[1])
         self.waypoints = [[x, y], [mx, my], self.goal]
+        self.aruco_distance = 0.0
         
         #publish goal and waypoints
-        #self.publish_goal_marker(self.goal)
-        #self.publish_waypoints_marker(self.waypoints)
+        self.publish_goal_marker(self.goal)
+        self.publish_waypoints_marker(self.waypoints)
+        self.publish_trajectory_marker(self.controller.cx, self.controller.cy)
+
 
         self.controller.update_traj(state, self.waypoints)
         self.create_timer(self.DELTA_TIME, self.loop)

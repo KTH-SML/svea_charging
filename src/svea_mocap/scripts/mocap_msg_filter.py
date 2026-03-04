@@ -57,7 +57,7 @@ class MocapToPose(rx.Node):
     @rx.Subscriber(RigidBodies, mocap_topic, qos_profile=qos_subber)
     def _rigid_bodies_pose_cb(self, msg: RigidBodies) -> None:
         for rigid_body in msg.rigidbodies:
-            if rigid_body.rigid_body_name == "svea":
+            if rigid_body.rigid_body_name in ("svea", "svea67"):
                 self._svea_pose_msg.header = msg.header
                 self._svea_pose_msg.pose.pose = rigid_body.pose
                 self.mocap_svea_pub.publish(self._svea_pose_msg)
@@ -74,8 +74,8 @@ class MocapToPose(rx.Node):
                         self._initialpose_msg.header = pose_transformed.header
                         self._initialpose_msg.pose.pose = pose_transformed.pose
                         self.initialpose_pub.publish(self._initialpose_msg)
-                        self.get_logger().info("Mocap svea initial pose published: x={:.2f}, y={:.2f}".format(
-                            pose_transformed.pose.position.x, pose_transformed.pose.position.y))
+                        #self.get_logger().info("Mocap svea initial pose published: x={:.2f}, y={:.2f}".format(
+                            #pose_transformed.pose.position.x, pose_transformed.pose.position.y))
                         self.initial_pose = True
                     except TransformException as ex:
                         self.get_logger().warn(f'Could not transform: {ex}')

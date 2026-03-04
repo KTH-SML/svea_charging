@@ -19,7 +19,7 @@
     <arg name="aruco_frame_id" default="camera"/>
     <arg name="aruco_camera_backend" default="V4L2"/>
     <arg name="aruco_use_aruco_detector_api" default="false"/>
-    <arg name="aruco_publish_debug_image" default="true"/>
+    <arg name="aruco_publish_debug_image" default="true"/>  
     <arg name="aruco_jpeg_quality" default="80"/>
     <arg name="aruco_generate_marker_on_startup" default="false"/>
     <arg name="aruco_marker_id" default="13"/>
