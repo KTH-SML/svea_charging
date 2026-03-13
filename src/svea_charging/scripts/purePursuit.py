@@ -2,16 +2,14 @@
 
 import numpy as np
 from geometry_msgs.msg import Point
-from geometry_msgs.msg import PoseArray, PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseArray
 from visualization_msgs.msg import Marker
-import time
 
 from svea_core.interfaces import LocalizationInterface
-from svea_charging.controllers.stanleyController import StanleyController
-from svea_core.interfaces import ActuationInterface
+from svea_core.controllers.pure_pursuit import PurePursuitController
+from svea_core.interfaces import ActuationInterface, ShowMarker, ShowPath
 from svea_core import rosonic as rx
 from std_msgs.msg import Float32
-from tf_transformations import euler_from_quaternion
 from rclpy.qos import (
     QoSProfile,
     QoSReliabilityPolicy,
@@ -28,60 +26,32 @@ qos_pubber = QoSProfile(
     depth=1,
 )
 
-class stanley_control(rx.Node):
+class pure_pursuit(rx.Node):
+    DELTA_TIME = 0.1
+    TRAJ_LEN = 20
 
-    def __init__(self):
-        super().__init__('stanley_control')
-        self.charging_station_pose = None
-        self.charging_station_identified_mocap = False
-        self.svea_identified_mocap = False
-
-    DELTA_TIME = 0.05
-
-
-    endPoint = rx.Parameter('[1.891350, 1.363510]') #x= -1.885,y=  1.348, yaw = 90deg alt x = 1.6
-    endPoints = rx.Parameter('[0.9, 1.3659], [1.6, 1.363510], [1.891350, 1.363510]')
-
-    target_velocity = rx.Parameter(0.5)
-    
-    use_adaptive_speed = rx.Parameter(True)
-    use_mocap_goal = rx.Parameter(False)
-    use_mocap = rx.Parameter(False)
+    endPoint = rx.Parameter('[1.885, 1.348]') #x= -1.360,y=  1.382, yaw = 90deg
+    target_velocity = rx.Parameter(0.7)
+    use_aruco_goal = rx.Parameter(False)
     aruco_goal_topic = rx.Parameter("aruco/poses")
     aruco_pose_is_car_in_marker_frame = rx.Parameter(True)
     aruco_goal_offset = rx.Parameter(0.0)  # stop short of marker center [m]
     aruco_distance_topic = rx.Parameter("aruco/distance_m") # distance to aruco marker, updated by subscriber
-    use_aruco_goal = rx.Parameter(False)
-
-
     # Interfaces
     actuation = ActuationInterface()
     localizer = LocalizationInterface()
-    goal_tolerance = rx.Parameter(0.2) #m
+    goal_tolerance = rx.Parameter(0.05) #m
+
+    goal_marker = ShowMarker() # for goal visualization
+    path = ShowPath() # for path visualization
+
 
     #Publishers
     goal_pub = rx.Publisher(Marker, 'goal_marker', qos_pubber)
     path_pub = rx.Publisher(Marker, 'path_marker', qos_pubber)
     traj_pub = rx.Publisher(Marker, 'traj_marker', qos_pubber)
-    cross_track_error_pub = rx.Publisher(Float32, 'cross_track_error', qos_pubber)
-    yaw_error_pub = rx.Publisher(Float32, 'yaw_error', qos_pubber)
     velocity_error_pub = rx.Publisher(Float32, 'velocity_error', qos_pubber)
     dist_to_goal = rx.Publisher(Float32, 'dist_to_goal', qos_pubber)
-
-    #Subscribers
-    @rx.Subscriber(PoseWithCovarianceStamped, '/mocap/svea/pose', qos_pubber)
-    def _svea67_pose_cb(self, msg: PoseWithCovarianceStamped):
-        self.svea_pose = msg
-        self.svea_identified_mocap = True
-
-    @rx.Subscriber(PoseWithCovarianceStamped, '/mocap/charging_station/pose', qos_pubber)
-    def _charging_station_cb(self, msg: PoseWithCovarianceStamped):
-        if not self.charging_station_identified_mocap: #runs once
-            self.charging_station_pose = msg
-            self.goal = [msg.pose.pose.position.x, msg.pose.pose.position.y]
-            pointOne, pointTwo = self.calculate_points()
-            self.waypoints = [pointTwo, pointOne, self.goal]
-            self.charging_station_identified_mocap = True
 
 
     @rx.Subscriber(Float32, aruco_distance_topic)
@@ -116,46 +86,35 @@ class stanley_control(rx.Node):
 
        
         self.goal = [aruco_in_map[0], aruco_in_map[1]]
-        self.waypoints = self.endPoints
+        mid_x = 0.5 * (x + aruco_in_map[0])
+        mid_y = 0.5 * (y + aruco_in_map[1])
+        self.waypoints = [[x, y], [mid_x, mid_y], self.goal]
         self.reached_goal = False
-         
+
 
     def on_startup(self):
-        startup_counter = 0
         self.reached_goal = False
         self.counter = 0
-        self.aruco_distance = 5.0 # default value until we get a reading from the subscriber
-        
-        if self.use_mocap:
-            if self.use_mocap_goal:
-                while not (self.charging_station_identified_mocap and self.svea_identified_mocap):
-                    if startup_counter == 0:
-                        self.get_logger().info("Waiting for charging station pose...")
-                    startup_counter += 1
-                    time.sleep(1.0)
 
-            else:
-                while not self.svea_identified_mocap:
-                    if startup_counter == 0:
-                        self.get_logger().info("Waiting for SVEA mocap pose...")
-                        self.endPoints = eval(self.endPoints)
-                        self.goal = eval(self.endPoint)
-                        self.waypoints = self.endPoints
-                    startup_counter += 1
-                    time.sleep(1.0)
-        
-            state = self.svea_pose.pose.pose.position.x, self.svea_pose.pose.pose.position.y, euler_from_quaternion([self.svea_pose.pose.pose.orientation.x, self.svea_pose.pose.pose.orientation.y, self.svea_pose.pose.pose.orientation.z, self.svea_pose.pose.pose.orientation.w])[2], 0.0
-        else:
-            time.sleep(7.0)
-            self.endPoints = eval(self.endPoints)
-            self.goal = eval(self.endPoint)
-            self.waypoints = self.endPoints
-            state = self.localizer.get_state()
-            
-
-        self.controller = StanleyController(node=self)
+        self.controller = PurePursuitController()
         self.controller.target_velocity = self.target_velocity
-        self.controller.update_traj(state, self.waypoints)
+
+        import time
+        time.sleep(8) # wait for localization to start up and get first state
+        state = self.localizer.get_state()
+        x, y, yaw, vel = state
+
+        self.goal = eval(self.endPoint)
+        mx = 0.5*(x + self.goal[0])
+        my = 0.5*(y + self.goal[1])
+        self.waypoints = [[x, y], [mx, my], self.goal]
+        
+        #publish goal and waypoints
+        self.publish_goal_marker(self.goal)
+
+        #self.publish_waypoints_marker(self.waypoints)
+
+        self.update_traj(x, y)
         self.create_timer(self.DELTA_TIME, self.loop)
 
 
@@ -166,57 +125,32 @@ class stanley_control(rx.Node):
         state = self.localizer.get_state()
         x, y, yaw, vel = state
 
-        if bool(self.use_adaptive_speed):
-            self.controller.target_velocity = self.target_velocity * (self.aruco_distance / 5.0)
-
         dist = self.distance_to_goal(state)
         if dist <= self.goal_tolerance:
             if not self.reached_goal:
                 self.get_logger().info("Reached goal!")
                 self.reached_goal = True
-        
+
+        #self.update_goal()
+        self.update_traj(x, y)
+
         if not self.reached_goal:
             steering, velocity = self.controller.compute_control(state)
             self.get_logger().info(f"Steering: {steering}, Velocity: {velocity}")
         else:
-            steering, velocity = np.deg2rad(16), 0.0
-            self.velocity = 0.0
+            steering, velocity = 0.0, 0.0
 
         self.actuation.send_control(steering, velocity)
-        self.publish_errors()
-        self.dist_to_goal.publish(Float32(data=dist))
         
 
-        if self.counter % 10 == 0: # publish markers every 1 seconds
+        if self.counter % 5 == 0: # publish markers every .5 seconds
             self.publish_goal_marker(self.goal)
-            self.publish_waypoints_marker(self.waypoints)
-            self.publish_trajectory_marker(self.controller.cx, self.controller.cy)
+            # self.publish_waypoints_marker(self.waypoints)
+            # self.publish_trajectory_marker(self.controller.cx, self.controller.cy)
             # Publish errors
+            self.publish_errors(x, y, yaw, vel)
+            self.dist_to_goal.publish(Float32(data=dist))
         self.counter += 1
-
-
-    def calculate_points(self):
-        station_x = self.charging_station_pose.pose.pose.position.x
-        station_y = self.charging_station_pose.pose.pose.position.y
-
-        q = self.charging_station_pose.pose.pose.orientation
-        quat = [q.x, q.y, q.z, q.w]
-
-        _, _, station_yaw = euler_from_quaternion(quat)
-
-        offset = 0.8
-
-        pointOne = [
-            station_x + offset/3 * np.cos(station_yaw),
-            station_y + offset/3 * np.sin(station_yaw)
-        ]
-
-        pointTwo = [
-            station_x + 2*offset * np.cos(station_yaw),
-            station_y + 2*offset * np.sin(station_yaw)
-        ]
-        self.charging_station_identified_mocap = True
-        return pointOne, pointTwo
 
     def distance_to_goal(self, state):
         x, y, _, _ = state
@@ -309,17 +243,23 @@ class stanley_control(rx.Node):
 
         self.traj_pub.publish(msg)
 
-    def publish_errors(self):
-        _, _, _, vel = self.localizer.get_state()
-        
-        self.cross_track_error_pub.publish(Float32(data=self.controller.cross_track_error)) #m
-        self.yaw_error_pub.publish(Float32(data=np.rad2deg(self.controller.yaw_error))) #degrees
-
+    def publish_errors(self, x, y, yaw, vel):
         # Velocity error
         vel_err = self.controller.target_velocity - vel
         self.velocity_error_pub.publish(Float32(data=vel_err))
 
-
+    def update_traj(self, x, y):
+        """
+        Update the trajectory based on the current state and the goal. It
+        generates a linear trajectory from the current position to the goal
+        position, and updates the controller's trajectory points.
+        The trajectory is visualized using the ShowPath interface.
+        """
+        xs = np.linspace(x, self.goal[0], self.TRAJ_LEN)
+        ys = np.linspace(y, self.goal[1], self.TRAJ_LEN)
+        self.controller.traj_x = xs
+        self.controller.traj_y = ys
+        self.path.publish_path(xs,ys)
 
 if __name__ == '__main__':
-    stanley_control.main()
+    pure_pursuit.main()
