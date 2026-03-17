@@ -17,7 +17,7 @@
     <arg name="aruco_marker_length_m" default="0.32"/>
     <arg name="aruco_display" default="false"/>
     <arg name="aruco_loop_hz" default="30.0"/>
-    <arg name="aruco_frame_id" default="camera"/>
+    <arg name="aruco_frame_id" default="svea67/camera"/>
     <arg name="aruco_camera_backend" default="V4L2"/>
     <arg name="aruco_use_aruco_detector_api" default="false"/>
     <arg name="aruco_publish_debug_image" default="true"/>

@@ -38,17 +38,17 @@ class stanley_control(rx.Node):
 
     DELTA_TIME = 0.05
 
-    aruco_to_base = PoseWithCovarianceStamped()
-
 
     endPoint = rx.Parameter('[1.891350, 1.363510]') #x= -1.885,y=  1.348, yaw = 90deg alt x = 1.6
     endPoints = rx.Parameter('[0.9, 1.3659], [1.6, 1.363510], [1.891350, 1.363510]')
 
-    target_velocity = rx.Parameter(0.5)
+    target_velocity = rx.Parameter(0.4)
+    goal_yaw_tolerance = rx.Parameter(np.deg2rad(8.0))
+    goal_approach_speed = rx.Parameter(0.08)
+    goal_approach_gain = rx.Parameter(0.7)
     
     use_adaptive_speed = rx.Parameter(True)
     use_mocap_goal = rx.Parameter(False)
-    use_mocap = rx.Parameter(False)
     aruco_goal_topic = rx.Parameter("aruco/poses")
     aruco_pose_is_car_in_marker_frame = rx.Parameter(True)
     aruco_goal_offset = rx.Parameter(0.0)  # stop short of marker center [m]
@@ -56,11 +56,10 @@ class stanley_control(rx.Node):
     use_aruco_goal = rx.Parameter(True)
 
 
-
     # Interfaces
     actuation = ActuationInterface()
     localizer = LocalizationInterface()
-    goal_tolerance = rx.Parameter(0.2) #m
+    goal_tolerance = rx.Parameter(0.05) #m
 
     #Publishers
     goal_pub = rx.Publisher(Marker, 'goal_marker', qos_pubber)
@@ -98,41 +97,17 @@ class stanley_control(rx.Node):
         if not bool(self.use_aruco_goal):
             return
         if len(msg.poses) == 0:
-            #self.get_logger().warn("No Aruco markers detected, cannot update goal")
+            self.get_logger().warn("No Aruco markers detected, cannot update goal")
             return
 
         pose = msg.poses[0]
-        aruco_x = pose.position.x
-        aruco_y = pose.position.z
-        thetaAruco = pose.orientation.y
-        aruco_x_rel = self.aruco_distance * np.cos(thetaAruco)
-        aruco_y_rel = self.aruco_distance * np.sin(thetaAruco)
+        self.aruco_x = pose.position.x
+        self.aruco_y = pose.position.z
+        self.thetaAruco = pose.orientation.y
+        self.get_logger().info(f"x: {self.aruco_x}, y:{self.aruco_y}, theta: {self.thetaAruco}")
+       
+      
 
-        state = self.localizer.get_state()
-        x, y, yaw, vel = state
-
-        aruco_vec = np.array([aruco_x_rel, aruco_y_rel])
-        car_vec = np.array([x, y])
-        A = np.array([[np.cos(yaw), -np.sin(yaw)],
-                      [np.sin(yaw), np.cos(yaw)]])
-        aruco_in_camera = car_vec + A @ aruco_vec
-
-        try:
-            pose_stamped = PoseStamped()
-            pose_stamped.header = msg.header
-            pose_stamped.pose = aruco_in_camera
-            transform = self.tf_buffer.lookup_transform('base_link', '/svea67/camera', rclpy.time.Time(),timeout=rclpy.duration.Duration(seconds=1.0))
-            pose_transformed = tf2_geometry_msgs.do_transform_pose_stamped(
-            pose_stamped,
-            transform
-            )
-            self.aruco_to_base.header = pose_transformed.header
-            self.aruco_to_base.pose.pose = pose_transformed.pose
-        except:
-            pass
-
-        #self.get_logger().info(f"x: {self.aruco_to_base.pose.pose.position.x} y:{self.aruco_to_base.pose.pose.position.y}")
-        self.get_logger().info(f"x:{aruco_in_camera[0]}, y: {aruco_in_camera[1]}")
 
     def on_startup(self):
         startup_counter = 0
@@ -140,36 +115,30 @@ class stanley_control(rx.Node):
         self.counter = 0
         self.aruco_distance = 5.0 # default value until we get a reading from the subscriber
         
-        if self.use_mocap:
-            if self.use_mocap_goal:
-                while not (self.charging_station_identified_mocap and self.svea_identified_mocap):
+        if self.use_mocap_goal:
+            while not (self.charging_station_identified_mocap and self.svea_identified_mocap):
+                if startup_counter == 0:
+                    self.get_logger().info("Waiting for charging station pose...")
+                startup_counter += 1
+                time.sleep(1.0)
+
+        else:
+            while not self.svea_identified_mocap:
                     if startup_counter == 0:
                         self.get_logger().info("Waiting for charging station pose...")
-                    startup_counter += 1
-                    time.sleep(1.0)
 
-            else:
-                while not self.svea_identified_mocap:
-                    if startup_counter == 0:
-                        self.get_logger().info("Waiting for SVEA mocap pose...")
                         self.endPoints = eval(self.endPoints)
                         self.goal = eval(self.endPoint)
                         self.waypoints = self.endPoints
-                    startup_counter += 1
-                    time.sleep(1.0)
-        
-            state = self.svea_pose.pose.pose.position.x, self.svea_pose.pose.pose.position.y, euler_from_quaternion([self.svea_pose.pose.pose.orientation.x, self.svea_pose.pose.pose.orientation.y, self.svea_pose.pose.pose.orientation.z, self.svea_pose.pose.pose.orientation.w])[2], 0.0
-        else:
-            time.sleep(7.0)
-            self.endPoints = eval(self.endPoints)
-            self.goal = eval(self.endPoint)
-            self.waypoints = self.endPoints
-            state = self.localizer.get_state()
-            
+                        startup_counter += 1
+                        time.sleep(1.0)
 
         self.controller = StanleyController(node=self)
         self.controller.target_velocity = self.target_velocity
-        self.controller.update_traj(state, self.waypoints)
+
+        initialState = self.svea_pose.pose.pose.position.x, self.svea_pose.pose.pose.position.y, euler_from_quaternion([self.svea_pose.pose.pose.orientation.x, self.svea_pose.pose.pose.orientation.y, self.svea_pose.pose.pose.orientation.z, self.svea_pose.pose.pose.orientation.w])[2], 0.0
+
+        self.controller.update_traj(initialState, self.waypoints)
         self.create_timer(self.DELTA_TIME, self.loop)
 
 
@@ -180,19 +149,31 @@ class stanley_control(rx.Node):
         state = self.localizer.get_state()
         x, y, yaw, vel = state
 
+        dist = self.distance_to_goal(state)
+
+        # keep moving with reduced speed when close to the goal so we can settle without overshooting
         if bool(self.use_adaptive_speed):
             self.controller.target_velocity = self.target_velocity * (self.aruco_distance / 5.0)
 
-        dist = self.distance_to_goal(state)
         if dist <= self.goal_tolerance:
-            if not self.reached_goal:
-                self.get_logger().info("Reached goal!")
-                self.reached_goal = True
-        
-        if not self.reached_goal:
-            steering, velocity = self.controller.compute_control(state)
-            #self.get_logger().info(f"Steering: {steering}, Velocity: {velocity}")
+            approach_scale = np.clip(dist / self.goal_tolerance, 0.0, 1.0) * self.goal_approach_gain
+            self.controller.target_velocity = max(
+                self.goal_approach_speed,
+                self.controller.target_velocity * approach_scale
+            )
+
+        steering, velocity = self.controller.compute_control(state)
+        self.get_logger().info(f"Steering: {steering}, Velocity: {velocity}")
+
+        if dist <= self.goal_tolerance and abs(self.controller.yaw_error) <= self.goal_yaw_tolerance:
+            if abs(self.controller.cross_track_error) <= self.goal_tolerance * 0.5:
+                if not self.reached_goal:
+                    self.get_logger().info("Reached goal!")
+                    self.reached_goal = True
         else:
+            self.reached_goal = False
+
+        if self.reached_goal:
             steering, velocity = np.deg2rad(16), 0.0
             self.velocity = 0.0
 
@@ -337,3 +318,4 @@ class stanley_control(rx.Node):
 
 if __name__ == '__main__':
     stanley_control.main()
+
