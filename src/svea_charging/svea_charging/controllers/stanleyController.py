@@ -10,6 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import sys
 import pathlib
+from svea_core import rosonic as rx
 
 from svea_core.interfaces import LocalizationInterface
 
@@ -17,13 +18,14 @@ sys.path.append(str(pathlib.Path(__file__).parent.parent.parent))
 from svea_charging.third_party.PythonRobotics.PathPlanning.CubicSpline import cubic_spline_planner
 
 # Parameters
-k = .5  # control gain
-Kp = 1  # speed proportional gain
-dt = 0.1  # [s] time difference
-L = 0.249  # [m] Wheel base of vehicle (TODO: check this value)
-max_steer = np.radians(60.0)  # [rad] max steering angle (TODO: check this value)
+k = 3.2 # control gain
+Kp = .9  # speed proportional gain
+dt = 0.05  # [s] time difference
+L = 0.2  # [m] Wheel base of vehicle (TODO: check this value)
+max_steer = np.radians(50.0)  # [rad] max steering angle (TODO: check this value)
 
-Ki = 0.2
+Ki = .2
+Kd = 0.01
 
 
 
@@ -38,7 +40,7 @@ class StanleyController:
     :param v: (float) speed
     """
 
-    def __init__(self, x=0.0, y=0.0, yaw=0.0, v=0.0):
+    def __init__(self, x=0.0, y=0.0, yaw=0.0, v=0.0, node: rx.Node = None):
         """Instantiate the object."""
         super().__init__()
         self.x = x
@@ -57,10 +59,12 @@ class StanleyController:
         self.target_velocity = 0.0
 
         self.error_integral = 0.0
+        self.error_derivative = 0.0
         self.error_prev = 0.0
 
         self.cross_track_error = 0.0
         self.yaw_error = 0.0
+        self.node = node
 
     def update(self, state):
         """
@@ -84,13 +88,16 @@ class StanleyController:
         """
         error = self.target_velocity - self.v
 
-        error_i = (error + self.error_prev) / 2 * 0.01
+        error_i = (error + self.error_prev) / 2 * dt
+        error_d = (error - self.error_prev) / dt
+        self.error_derivative = error_d
 
         self.error_integral += error_i
         self.error_integral = np.clip(self.error_integral, -self.target_velocity*1.5, self.target_velocity*1.5)  # Anti-windup
+
         self.error_prev = error
 
-        return Kp * error + Ki * self.error_integral
+        return Kp * error + Ki * self.error_integral + Kd * self.error_derivative
 
 
     def stanley_control(self, cx, cy, cyaw, last_target_idx):
@@ -104,6 +111,9 @@ class StanleyController:
         :param last_target_idx: (int)
         :return: (float, int)
         """
+        if not cx or not cy or not cyaw:
+            raise ValueError("Stanley path is empty; cannot compute steering.")
+
         current_target_idx, error_front_axle = self.calc_target_index(cx, cy)
         self.cross_track_error = error_front_axle # for providing output to external
 
@@ -111,13 +121,19 @@ class StanleyController:
         if last_target_idx >= current_target_idx:
             current_target_idx = last_target_idx
 
+        # Path can be rebuilt every loop; keep stale indices within bounds.
+        max_idx = min(len(cx), len(cy), len(cyaw)) - 1
+        current_target_idx = int(np.clip(current_target_idx, 0, max_idx))
+
         # theta_e corrects the heading error
         theta_e = self.normalize_angle(cyaw[current_target_idx] - self.yaw)
         self.yaw_error = theta_e # for providing output to external
         # theta_d corrects the cross track error
-        theta_d = np.arctan2(k * error_front_axle, self.v)
+        theta_d = np.arctan2(k * error_front_axle, max(self.v, 0.4))# added division to reduce steering angle for better stability at low speeds
+        # self.node.get_logger().info(f"Theta_e: {theta_e}, Theta_d: {theta_d}")
         # Steering control
         delta = theta_e + theta_d
+        # delta = theta_e
 
         return delta, current_target_idx
 
@@ -142,6 +158,9 @@ class StanleyController:
         :param cy: [float]
         :return: (int, float)
         """
+        if not cx or not cy:
+            raise ValueError("Stanley path is empty; cannot compute target index.")
+
         # Calc front axle position
         fx = self.x + L * np.cos(self.yaw)
         fy = self.y + L * np.sin(self.yaw)
@@ -183,6 +202,12 @@ class StanleyController:
 
         self.cx, self.cy, self.cyaw, self.ck, self.s = cubic_spline_planner.calc_spline_course(
             self.ax, self.ay, ds=0.2)
+
+        # Keep target index valid when trajectory size changes.
+        if self.cx:
+            self.target_idx = int(np.clip(self.target_idx, 0, len(self.cx) - 1))
+        else:
+            self.target_idx = 0
 
 
     def compute_steering(self):
