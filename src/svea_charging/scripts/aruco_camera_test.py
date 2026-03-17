@@ -180,6 +180,19 @@ def draw_axes(frame, camera_matrix, dist_coeffs, rvec, tvec, axis_length_m):
         cv2.drawFrameAxes(frame, camera_matrix, dist_coeffs, rvec, tvec, axis_length_m)
 
 
+def apply_z_up_marker_frame(rvec):
+    """Convert OpenCV ArUco marker pose to a z-up convention.
+
+    OpenCV marker coordinates typically have z pointing toward the camera/viewer.
+    This converts to a right-handed variant where z points opposite (up convention)
+    by applying a 180° rotation around the marker x-axis: (x,y,z)->(x,-y,-z).
+    """
+    rot_mat, _ = cv2.Rodrigues(rvec)
+    z_up_correction = np.array([[1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, -1.0]])
+    corrected = rot_mat @ z_up_correction
+    return cv2.Rodrigues(corrected)[0]
+
+
 class aruco_camera_test(rx.Node):
     dictionary = rx.Parameter("DICT_4X4_50")
     marker_id = rx.Parameter(0)
@@ -192,6 +205,7 @@ class aruco_camera_test(rx.Node):
     calibration_file = rx.Parameter("")
     focal_length_px = rx.Parameter(-1.0)
     display = rx.Parameter(False)
+    z_axis_up = rx.Parameter(True)
     loop_hz = rx.Parameter(30.0)
     frame_id = rx.Parameter("camera")
     camera_backend = rx.Parameter("ANY")  # ANY, V4L2, GSTREAMER, FFMPEG
@@ -391,6 +405,8 @@ class aruco_camera_test(rx.Node):
                 for i, marker_id in enumerate(ids.flatten()):
                     rvec = rvecs[i]
                     tvec = tvecs[i]
+                    if bool(self.z_axis_up):
+                        rvec = apply_z_up_marker_frame(rvec)
                     txyz = np.asarray(tvec).reshape(-1)
                     qxyzw = rvec_to_quaternion_xyzw(rvec)
                     roll_deg, pitch_deg, yaw_deg = rvec_to_euler_deg(rvec)
