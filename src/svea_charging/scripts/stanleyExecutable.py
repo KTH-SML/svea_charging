@@ -51,7 +51,7 @@ class stanley_control(rx.Node):
     aruco_pose_is_car_in_marker_frame = rx.Parameter(True)
     aruco_goal_offset = rx.Parameter(0.0)  # stop short of marker center [m]
     aruco_distance_topic = rx.Parameter("aruco/distance_m") # distance to aruco marker, updated by subscriber
-    use_aruco_goal = rx.Parameter(False)
+    use_aruco_goal = rx.Parameter(True)
 
 
     # Interfaces
@@ -115,9 +115,9 @@ class stanley_control(rx.Node):
         aruco_in_map = car_vec + A @ aruco_vec
 
        
-        self.goal = [aruco_in_map[0], aruco_in_map[1]]
-        self.waypoints = self.endPoints
-        self.reached_goal = False
+        # self.goal = [aruco_in_map[0], aruco_in_map[1]]
+        # self.waypoints = self.endPoints
+        # self.reached_goal = False
          
 
     def on_startup(self):
