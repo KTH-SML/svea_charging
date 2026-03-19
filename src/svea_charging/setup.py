@@ -14,6 +14,7 @@ setup(
         ('share/ament_index/resource_index/packages', [f'resource/{name}']),
         (f'share/{name}', ['package.xml']),
         (f'share/{name}/launch', glob('launch/*.xml')),
+        (f'share/{name}/params', glob('params/*.yaml') + glob('params/**/*.yaml')),
         (f'lib/{name}', glob('scripts/*.py')),
         (os.path.join('share', name, 'launch'), glob(os.path.join('launch', '*launch.[pxy][yma]*'))),
     ],

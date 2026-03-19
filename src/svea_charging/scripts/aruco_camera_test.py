@@ -8,6 +8,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import rclpy
+import yaml
 from geometry_msgs.msg import Pose, PoseArray
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import Int32MultiArray, String, Float32
@@ -88,10 +89,29 @@ def load_calibration(calibration_file: Path | None):
     if calibration_file is None:
         return None, None
 
+    if calibration_file.suffix.lower() in {".yaml", ".yml"}:
+        with calibration_file.open("r", encoding="utf-8") as handle:
+            data = yaml.safe_load(handle)
+
+        try:
+            camera_matrix_data = data["camera_matrix"]["data"]
+            dist_coeffs_data = data["distortion_coefficients"]["data"]
+        except (TypeError, KeyError) as exc:
+            raise ValueError(
+                "Kalibreringsfilen måste innehålla 'camera_matrix.data' och "
+                "'distortion_coefficients.data' (.yaml)."
+            ) from exc
+
+        camera_matrix = np.array(camera_matrix_data, dtype=np.float32).reshape(3, 3)
+        dist_coeffs = np.array(dist_coeffs_data, dtype=np.float32).reshape(-1, 1)
+        return camera_matrix, dist_coeffs
+
     data = np.load(str(calibration_file))
     if "camera_matrix" not in data or "dist_coeffs" not in data:
         raise ValueError(
-            "Kalibreringsfilen måste innehålla 'camera_matrix' och 'dist_coeffs' (.npz)."
+            "Kalibreringsfilen måste innehålla 'camera_matrix' och 'dist_coeffs' "
+            "(.npz) eller ROS-formatet med 'camera_matrix.data' och "
+            "'distortion_coefficients.data' (.yaml)."
         )
 
     camera_matrix = data["camera_matrix"]

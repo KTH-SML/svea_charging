@@ -26,7 +26,7 @@
     <arg name="aruco_marker_id" default="13"/>
     <arg name="aruco_marker_size_px" default="400"/>
     <arg name="aruco_output" default="aruco_marker.png"/>
-    <arg name="aruco_calibration_file" default=""/>
+    <arg name="aruco_calibration_file" default="$(find-pkg-share svea_charging)/params/camera/camera.yaml"/>
     <arg name="aruco_focal_length_px" default="-1.0"/>
 
     <!-- Start Map Server and Foxglove -->
