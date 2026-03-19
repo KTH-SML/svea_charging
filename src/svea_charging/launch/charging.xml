@@ -87,6 +87,11 @@
             <param name="localization/base_frame" value="$(var name)/base_link"/>
         </node>
 
+        <!-- Line Follower
+        </node>
+            <node name="line_follower" pkg="svea_charging" exec="line_follower.py" output="screen">
+        </node> -->
+
         <node if="$(var use_aruco_camera)" name="aruco_camera_test" pkg="svea_charging" exec="aruco_camera_test.py" output="screen">
             <param name="dictionary" value="$(var aruco_dictionary)"/>
             <param name="camera_index" value="$(var aruco_camera_index)"/>
