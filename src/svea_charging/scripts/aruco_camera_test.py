@@ -133,6 +133,17 @@ def get_fallback_camera_matrix(frame_shape, focal_length_px: float | None):
     return camera_matrix, dist_coeffs
 
 
+def invert_camera_pose_to_marker_frame(rvec, tvec):
+    marker_to_camera_r = cv2.Rodrigues(np.asarray(rvec).reshape(3).astype(np.float64))[0]
+    tvec_camera = np.asarray(tvec).reshape(3, 1).astype(np.float64)
+
+    marker_position = (-marker_to_camera_r.T @ tvec_camera).reshape(-1)
+    marker_rotation = marker_to_camera_r.T
+    marker_rvec = cv2.Rodrigues(marker_rotation)[0]
+
+    return marker_position, marker_rvec
+
+
 def rvec_to_euler_deg(rvec):
     rot_mat, _ = cv2.Rodrigues(rvec)
     sy = np.sqrt(rot_mat[0, 0] ** 2 + rot_mat[1, 0] ** 2)
@@ -411,14 +422,15 @@ class aruco_camera_test(rx.Node):
                 for i, marker_id in enumerate(ids.flatten()):
                     rvec = rvecs[i]
                     tvec = tvecs[i]
-                    txyz = np.asarray(tvec).reshape(-1)
-                    qxyzw = rvec_to_quaternion_xyzw(rvec)
-                    roll_deg, pitch_deg, yaw_deg = rvec_to_euler_deg(rvec)
+                    marker_txyz, marker_rvec = invert_camera_pose_to_marker_frame(rvec, tvec)
+                    marker_rvec = np.asarray(marker_rvec).reshape(3)
+                    qxyzw = rvec_to_quaternion_xyzw(marker_rvec)
+                    roll_deg, pitch_deg, yaw_deg = rvec_to_euler_deg(marker_rvec)
 
                     pose = Pose()
-                    pose.position.x = float(txyz[0])
-                    pose.position.y = float(txyz[1])
-                    pose.position.z = float(txyz[2])
+                    pose.position.x = float(marker_txyz[0])
+                    pose.position.y = float(marker_txyz[2])
+                    pose.position.z = float(marker_txyz[1])
                     pose.orientation.x = float(qxyzw[0])
                     pose.orientation.y = float(qxyzw[1])
                     pose.orientation.z = float(qxyzw[2])
@@ -436,7 +448,7 @@ class aruco_camera_test(rx.Node):
 
                     anchor = corners[i][0][0]
                     x_px, y_px = int(anchor[0]), int(anchor[1])
-                    distance_m = float(np.linalg.norm(txyz))
+                    distance_m = float(np.linalg.norm(marker_txyz))
                     lines = [
                         f"ID {int(marker_id)}: {distance_m:.2f} m",
                         f"R/P/Y: {roll_deg:.0f}/{pitch_deg:.0f}/{yaw_deg:.0f} deg",

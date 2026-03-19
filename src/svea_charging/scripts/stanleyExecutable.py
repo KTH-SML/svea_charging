@@ -92,27 +92,28 @@ class stanley_control(rx.Node):
 
     @rx.Subscriber(PoseArray, aruco_goal_topic)
     def _aruco_goal_cb(self, msg: PoseArray):
-        if not bool(self.use_aruco_goal):
-            return
+        
         if len(msg.poses) == 0:
             #self.get_logger().warn("No Aruco markers detected, cannot update goal")
             return
 
         pose = msg.poses[0]
         aruco_x = pose.position.x
-        aruco_y = pose.position.z
-        thetaAruco = pose.orientation.y
-        aruco_x_rel = self.aruco_distance * np.cos(thetaAruco)
-        aruco_y_rel = self.aruco_distance * np.sin(thetaAruco)
+        aruco_y = pose.position.y
+        thetaAruco = pose.orientation.z
+        self.transform_to_map_frame(aruco_x,aruco_y,thetaAruco)
+       # self.get_logger().info(f"x: {aruco_x}, y: {aruco_y}, theta:{thetaAruco}")
+        # aruco_x_rel = self.aruco_distance * np.cos(thetaAruco)
+        # aruco_y_rel = self.aruco_distance * np.sin(thetaAruco)
 
-        state = self.localizer.get_state()
-        x, y, yaw, vel = state
+        # state = self.localizer.get_state()
+        # x, y, yaw, vel = state
 
-        aruco_vec = np.array([aruco_x_rel, aruco_y_rel])
-        car_vec = np.array([x, y])
-        A = np.array([[np.cos(yaw), -np.sin(yaw)],
-                      [np.sin(yaw), np.cos(yaw)]])
-        aruco_in_map = car_vec + A @ aruco_vec
+        # aruco_vec = np.array([aruco_x_rel, aruco_y_rel])
+        # car_vec = np.array([x, y])
+        # A = np.array([[np.cos(yaw), -np.sin(yaw)],
+        #               [np.sin(yaw), np.cos(yaw)]])
+        # aruco_in_map = car_vec + A @ aruco_vec
 
        
         # self.goal = [aruco_in_map[0], aruco_in_map[1]]
@@ -177,7 +178,7 @@ class stanley_control(rx.Node):
         
         if not self.reached_goal:
             steering, velocity = self.controller.compute_control(state)
-            self.get_logger().info(f"Steering: {steering}, Velocity: {velocity}")
+            # self.get_logger().info(f"Steering: {steering}, Velocity: {velocity}")
         else:
             steering, velocity = np.deg2rad(16), 0.0
             self.velocity = 0.0
@@ -217,6 +218,31 @@ class stanley_control(rx.Node):
         ]
         self.charging_station_identified_mocap = True
         return pointOne, pointTwo
+
+    def transform_to_map_frame(self,aruco_x,aruco_y, theta):
+        A_1_2 = np.array([
+    [0.0, -1.0, 0.0],
+    [-1.0, 0.0, 0.0],
+    [0.0, 0.0, -1.0]
+])
+        c = np.cos(theta)
+        s = np.sin(theta)
+
+        A_2_3 = np.array([
+        [ c, 0.0,  s],
+        [0.0, -1.0, 0.0],
+        [-s, 0.0,  c]])
+
+        d0 = np.array([3.63, 1.25, 0.0])
+        d1 = np.array([aruco_x,aruco_y, 0.0])
+        d2 = np.array([0.3,0.0, 0.0])
+
+        A_1_3 = A_1_2 @ A_2_3
+        p0 = d0 + A_1_2 @ d1 + A_1_3 @ d2 
+        #self.get_logger().info((f"x:{aruco_x}, y: {aruco_y}"))
+        self.get_logger().info((f"x:{p0[0]}, y: {p0[1]}"))
+
+        
 
     def distance_to_goal(self, state):
         x, y, _, _ = state
