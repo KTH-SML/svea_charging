@@ -13,12 +13,13 @@ from svea_core.interfaces import ActuationInterface
 
 
 class line_follower(rx.Node):
-    image_topic = rx.Parameter("/camera/image_raw")
-    target_velocity = rx.Parameter(0.35)
-    max_velocity = rx.Parameter(0.5)
+    image_topic = rx.Parameter("/image_raw")
+    target_velocity = rx.Parameter(0.4)
+    max_velocity = rx.Parameter(0.7)
     loop_hz = rx.Parameter(20.0)
-    display = rx.Parameter(False)
     stop_on_lost_line = rx.Parameter(True)
+    publish_debug_image = rx.Parameter(True)
+    debug_image_topic = rx.Parameter("line_follower/debug_image")
 
     lower_h = rx.Parameter(100)
     lower_s = rx.Parameter(50)
@@ -39,6 +40,7 @@ class line_follower(rx.Node):
     line_error_pub = rx.Publisher(Float32, "line_follower/error_px")
     status_pub = rx.Publisher(String, "line_follower/status")
     centroid_pub = rx.Publisher(Point, "line_follower/centroid")
+    debug_image_pub = rx.Publisher(Image, debug_image_topic)
 
     def on_startup(self):
         self.bridge = CvBridge()
@@ -62,8 +64,6 @@ class line_follower(rx.Node):
 
     def on_shutdown(self):
         self.actuation.send_control(0.0, 0.0)
-        if bool(self.display):
-            cv2.destroyAllWindows()
 
     def _image_callback(self, msg: Image):
         try:
@@ -135,8 +135,7 @@ class line_follower(rx.Node):
                     float(self.lost_line_steering_rad),
                     0.0,
                 )
-            if bool(self.display):
-                self._show_debug(frame, None, None)
+            self._publish_debug_image(frame, None, None)
             return
 
         cx, cy = self.latest_centroid
@@ -171,13 +170,15 @@ class line_follower(rx.Node):
         centroid_msg.z = 0.0
         self.centroid_pub.publish(centroid_msg)
 
-        if bool(self.display):
-            self._show_debug(frame, (cx, cy), error_px)
+        self._publish_debug_image(frame, (cx, cy), error_px)
 
     def _publish_status(self, text: str):
         self.status_pub.publish(String(data=text))
 
-    def _show_debug(self, frame, centroid, error_px):
+    def _publish_debug_image(self, frame, centroid, error_px):
+        if not bool(self.publish_debug_image):
+            return
+
         debug = frame.copy()
         height, width = debug.shape[:2]
         center_x = width // 2
@@ -211,8 +212,9 @@ class line_follower(rx.Node):
                 cv2.LINE_AA,
             )
 
-        cv2.imshow("Line Follower", debug)
-        cv2.waitKey(1)
+        msg = self.bridge.cv2_to_imgmsg(debug, encoding="bgr8")
+        msg.header.stamp = self.get_clock().now().to_msg()
+        self.debug_image_pub.publish(msg)
 
 
 if __name__ == "__main__":
