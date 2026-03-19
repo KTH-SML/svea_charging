@@ -18,7 +18,7 @@ class ImageSubscriber(Node):
         self.bridge = CvBridge()
 
     def listener_callback(self, data):
-        current_frame = self.bridge.imgmsg_to_cv2(data, desired_encoding='bgr8')
+        current_frame = self.bridge.imgmsg_to_cv2(data, desired_encoding='bgr8') #convert from a ros format to a cv format
         cv2.imshow("Camera Feed", current_frame)
         cv2.waitKey(1)
 
