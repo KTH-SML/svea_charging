@@ -13,7 +13,7 @@ from svea_core.interfaces import ActuationInterface
 
 
 class line_follower(rx.Node):
-    image_topic = rx.Parameter("/image_raw")
+    image_topic = rx.Parameter("camera1/image_raw")
     target_velocity = rx.Parameter(0.4)
     max_velocity = rx.Parameter(0.7)
     loop_hz = rx.Parameter(20.0)
@@ -21,12 +21,13 @@ class line_follower(rx.Node):
     publish_debug_image = rx.Parameter(True)
     debug_image_topic = rx.Parameter("line_follower/debug_image")
 
-    lower_h = rx.Parameter(0)   #blue 100   red 0
-    lower_s = rx.Parameter(0)   #blue 50    red 100
-    lower_v = rx.Parameter(0)   #blue 50    red 50
-    upper_h = rx.Parameter(180) #blue 130   red 10
-    upper_s = rx.Parameter(255) #blue 255   red 255
-    upper_v = rx.Parameter(60)  #blue 255   red 255
+    #yellow line
+    lower_h = rx.Parameter(20)   #blue 100   red 0       black 0
+    lower_s = rx.Parameter(100)   #blue 50    red 100     black 0
+    lower_v = rx.Parameter(100)   #blue 50    red 50      black 0
+    upper_h = rx.Parameter(35) #blue 130   red 10      black 180
+    upper_s = rx.Parameter(255) #blue 255   red 255     black 255
+    upper_v = rx.Parameter(255)  #blue 255   red 255     black 60
 
     crop_start_ratio = rx.Parameter(0.55)
     min_contour_area = rx.Parameter(120)
@@ -63,7 +64,7 @@ class line_follower(rx.Node):
             Image,
             str(self.image_topic),
             self._image_callback,
-            10,
+            1,
         )
 
         period = 1.0 / max(float(self.loop_hz), 1.0)
