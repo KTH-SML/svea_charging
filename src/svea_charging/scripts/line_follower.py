@@ -34,6 +34,11 @@ class line_follower(rx.Node):
     steering_limit_rad = rx.Parameter(0.6)
     lost_line_steering_rad = rx.Parameter(0.0)
     velocity_scale_from_error = rx.Parameter(True)
+    use_aruco_stop = rx.Parameter(True)
+    aruco_distance_topic = rx.Parameter("aruco/distance_m")
+    aruco_slowdown_distance_m = rx.Parameter(0.8)
+    aruco_stop_distance_m = rx.Parameter(0.25)
+    aruco_min_velocity = rx.Parameter(0.1)
 
     actuation = ActuationInterface()
 
@@ -42,12 +47,17 @@ class line_follower(rx.Node):
     centroid_pub = rx.Publisher(Point, "line_follower/centroid")
     debug_image_pub = rx.Publisher(Image, debug_image_topic)
 
+    @rx.Subscriber(Float32, aruco_distance_topic)
+    def _aruco_distance_callback(self, msg: Float32):
+        self.aruco_distance = float(msg.data)
+
     def on_startup(self):
         self.bridge = CvBridge()
         self.latest_frame = None
         self.latest_mask = None
         self.latest_centroid = None
         self.line_detected = False
+        self.aruco_distance = -1.0
 
         self.create_subscription(
             Image,
@@ -157,12 +167,13 @@ class line_follower(rx.Node):
             speed_scale = 1.0
 
         velocity = float(self.target_velocity) * speed_scale
+        velocity = self._apply_aruco_stop_logic(velocity)
         velocity = float(np.clip(velocity, 0.0, float(self.max_velocity)))
 
         self.actuation.send_control(steering, velocity)
 
         self.line_error_pub.publish(Float32(data=float(error_px)))
-        self._publish_status("tracking")
+        self._publish_status(self._get_status_text(velocity))
 
         centroid_msg = Point()
         centroid_msg.x = float(cx)
@@ -174,6 +185,41 @@ class line_follower(rx.Node):
 
     def _publish_status(self, text: str):
         self.status_pub.publish(String(data=text))
+
+    def _get_status_text(self, velocity: float) -> str:
+        if not bool(self.use_aruco_stop) or self.aruco_distance <= 0.0:
+            return "tracking"
+
+        if velocity <= 0.0:
+            return "stopped_at_aruco"
+
+        if self.aruco_distance <= float(self.aruco_slowdown_distance_m):
+            return "slowing_for_aruco"
+
+        return "tracking"
+
+    def _apply_aruco_stop_logic(self, velocity: float) -> float:
+        if not bool(self.use_aruco_stop):
+            return velocity
+
+        distance = float(self.aruco_distance)
+        if distance <= 0.0:
+            return velocity
+
+        stop_distance = float(self.aruco_stop_distance_m)
+        slowdown_distance = max(float(self.aruco_slowdown_distance_m), stop_distance)
+        min_velocity = max(0.0, float(self.aruco_min_velocity))
+
+        if distance <= stop_distance:
+            return 0.0
+
+        if distance >= slowdown_distance:
+            return velocity
+
+        span = max(slowdown_distance - stop_distance, 1e-6)
+        ratio = (distance - stop_distance) / span
+        regulated_velocity = min_velocity + ratio * max(velocity - min_velocity, 0.0)
+        return min(velocity, regulated_velocity)
 
     def _publish_debug_image(self, frame, centroid, error_px):
         if not bool(self.publish_debug_image):
@@ -200,6 +246,17 @@ class line_follower(rx.Node):
                 2,
                 cv2.LINE_AA,
             )
+            if bool(self.use_aruco_stop) and self.aruco_distance > 0.0:
+                cv2.putText(
+                    debug,
+                    f"aruco_d={self.aruco_distance:.2f} m",
+                    (10, 60),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.8,
+                    (255, 220, 0),
+                    2,
+                    cv2.LINE_AA,
+                )
         else:
             cv2.putText(
                 debug,
