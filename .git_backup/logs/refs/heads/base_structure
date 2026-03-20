@@ -1,0 +1,4 @@
+0000000000000000000000000000000000000000 e76a882120906261b093ac9c6f689e4f656ca969 Annika-wyt <yintingwong@gmail.com> 1771513298 +0000	branch: Created from origin/base_structure
+e76a882120906261b093ac9c6f689e4f656ca969 4ded0dd2fd4722b7289127ec34236a4ebfc0893d Annika-wyt <yintingwong@gmail.com> 1771517641 +0000	commit: restructured and initial test with Mocap system, need stanleycontroller debugging
+4ded0dd2fd4722b7289127ec34236a4ebfc0893d a2fe51964373d598a94e38715d578a7e7818930f Annika-wyt <yintingwong@gmail.com> 1771591726 +0000	pull: Fast-forward
+a2fe51964373d598a94e38715d578a7e7818930f 055d7f261a1b0312a7d1c20e73dc905a9e36291f Annika-wyt <yintingwong@gmail.com> 1771596548 +0000	commit: changed namespaces and such to be able to run on the real svea and using the mocap system, working version but should tune the stanley controller
