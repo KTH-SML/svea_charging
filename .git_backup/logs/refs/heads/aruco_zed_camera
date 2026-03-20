@@ -1,0 +1,2 @@
+0000000000000000000000000000000000000000 c75edf23939a5c0f6d8f5303048ef77f48ab41df Annika-wyt <yintingwong@gmail.com> 1772441135 +0000	branch: Created from refs/remotes/origin/aruco_zed_camera
+c75edf23939a5c0f6d8f5303048ef77f48ab41df 9e9674865d4b33313343d00b335b2b142d990862 Annika-wyt <yintingwong@gmail.com> 1772444621 +0000	commit: connected stereo camera to svea, it works, calibrated against aruco marker

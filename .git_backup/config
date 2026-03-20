@@ -1,0 +1,61 @@
+[core]
+	repositoryformatversion = 0
+	filemode = true
+	bare = false
+	logallrefupdates = true
+[remote "origin"]
+	url = git@github.com:KTH-SML/svea_charging.git
+	fetch = +refs/heads/*:refs/remotes/origin/*
+[branch "main"]
+	remote = origin
+	merge = refs/heads/main
+	vscode-merge-base = origin/main
+[branch "base_structure"]
+	remote = origin
+	merge = refs/heads/base_structure
+	vscode-merge-base = origin/base_structure
+[remote "upstream"]
+	url = git@github.com:KTH-SML/svea_jazzy.git
+	fetch = +refs/heads/*:refs/remotes/upstream/*
+[branch "aruco_zed_camera"]
+	remote = origin
+	merge = refs/heads/aruco_zed_camera
+	vscode-merge-base = origin/aruco_zed_camera
+[branch "llc"]
+	github-pr-base-branch = "KTH-SML#svea_charging#aruco_zed_camera"
+	vscode-merge-base = origin/aruco_zed_camera
+	remote = origin
+	merge = refs/heads/llc
+[branch "debugMocap"]
+	github-pr-base-branch = "KTH-SML#svea_charging#llc"
+	vscode-merge-base = origin/llc
+	remote = origin
+	merge = refs/heads/debugMocap
+[branch "simulation_fix"]
+	github-pr-base-branch = "KTH-SML#svea_charging#llc"
+	vscode-merge-base = origin/llc
+	remote = origin
+	merge = refs/heads/simulation_fix
+[branch "aruco_llc"]
+	remote = origin
+	merge = refs/heads/aruco_llc
+	vscode-merge-base = origin/aruco_llc
+[branch "aruco_llc_v2"]
+	remote = origin
+	merge = refs/heads/aruco_llc_v2
+	vscode-merge-base = origin/aruco_llc_v2
+[branch "aruco_localization"]
+	vscode-merge-base = origin/main
+	remote = origin
+	merge = refs/heads/aruco_localization
+[branch "aruco_localization_v2"]
+	vscode-merge-base = origin/main
+	remote = origin
+	merge = refs/heads/aruco_localization_v2
+[branch "line_follower"]
+	remote = origin
+	merge = refs/heads/line_follower
+	vscode-merge-base = origin/line_follower
+[submodule "src/usb_cam"]
+	url = https://github.com/ros-drivers/usb_cam
+	active = true
