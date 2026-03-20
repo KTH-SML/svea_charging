@@ -1,0 +1,5 @@
+0000000000000000000000000000000000000000 3749a1fe6a8468c7aed706b7cc60b74d8da2d532 eliasalbag <eliasalbag97@gmail.com> 1773839026 +0000	branch: Created from HEAD
+3749a1fe6a8468c7aed706b7cc60b74d8da2d532 5d91191d07e92d479fb48aaad5da3b511cbdcdaa eliasalbag <eliasalbag97@gmail.com> 1773850488 +0000	commit: add yaml file for the camera calibration
+5d91191d07e92d479fb48aaad5da3b511cbdcdaa 77cd1c2ef2c2cbd9f586d2ce907e284ad753ceae eliasalbag <eliasalbag97@gmail.com> 1773909960 +0000	pull: Fast-forward
+77cd1c2ef2c2cbd9f586d2ce907e284ad753ceae ed58fe5b547457fbafe157bdda71ae6a34826950 eliasalbag <eliasalbag97@gmail.com> 1773930297 +0000	commit: fixed relative aruco pose estimation, also added transform to map frame which works okay, but with random offset
+ed58fe5b547457fbafe157bdda71ae6a34826950 092d50e1502b122ea951615b253096e7c4a83569 eliasalbag <eliasalbag97@gmail.com> 1774012050 +0000	commit: add the usb_cam repo to use the ros package for usb-connected cameras
