@@ -21,12 +21,12 @@ class line_follower(rx.Node):
     publish_debug_image = rx.Parameter(True)
     debug_image_topic = rx.Parameter("line_follower/debug_image")
 
-    lower_h = rx.Parameter(100)
-    lower_s = rx.Parameter(50)
-    lower_v = rx.Parameter(50)
-    upper_h = rx.Parameter(130)
-    upper_s = rx.Parameter(255)
-    upper_v = rx.Parameter(255)
+    lower_h = rx.Parameter(0)   #blue 100   red 0
+    lower_s = rx.Parameter(0)   #blue 50    red 100
+    lower_v = rx.Parameter(0)   #blue 50    red 50
+    upper_h = rx.Parameter(180) #blue 130   red 10
+    upper_s = rx.Parameter(255) #blue 255   red 255
+    upper_v = rx.Parameter(60)  #blue 255   red 255
 
     crop_start_ratio = rx.Parameter(0.55)
     min_contour_area = rx.Parameter(120)
