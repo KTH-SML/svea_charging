@@ -1,7 +1,7 @@
 import os
 from glob import glob
-import xml.etree.ElementTree as ET
 from setuptools import find_packages, setup
+import xml.etree.ElementTree as ET
 
 package = ET.parse('package.xml').getroot()
 name = package.find('name').text
@@ -13,9 +13,10 @@ setup(
     data_files=[
         ('share/ament_index/resource_index/packages', [f'resource/{name}']),
         (f'share/{name}', ['package.xml']),
-        (f'share/{name}/launch', glob('launch/*.xml')),
+        (f'share/{name}/launch', glob('launch/*.xml') + glob('launch/**/*.xml')),
+        (f'share/{name}/launch', glob('launch/*.py')),
+        (f'share/{name}/params', glob('params/*.yaml') + glob('params/**/*.yaml')),
         (f'lib/{name}', glob('scripts/*.py')),
-        (os.path.join('share', name, 'launch'), glob(os.path.join('launch', '*launch.[pxy][yma]*'))),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -25,3 +26,4 @@ setup(
     license=package.find('license').text,
     tests_require=['pytest'],
 )
+

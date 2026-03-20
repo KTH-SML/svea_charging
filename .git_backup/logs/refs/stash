@@ -1,4 +1,0 @@
-0000000000000000000000000000000000000000 9752d62a6ae7c7d5547e680988edb70ea730b4aa Annika-wyt <yintingwong@gmail.com> 1773048151 +0000	WIP on llc: a034038 reverted changes that accidentally that introduced crashes
-9752d62a6ae7c7d5547e680988edb70ea730b4aa 65d55bed60b68b0eb36edc8604685401f300799a eliasalbag <eliasalbag97@gmail.com> 1773747832 +0000	WIP on aruco_llc_v2: da9d2a1 pushing changes so they can be tested on the car
-65d55bed60b68b0eb36edc8604685401f300799a e8962cb3e61b1376e7166ab5c6afc2c0cc63af9e eliasalbag <eliasalbag97@gmail.com> 1773838982 +0000	WIP on aruco_localization: ba552d5 changed orientation of the aruco coordinate system
-e8962cb3e61b1376e7166ab5c6afc2c0cc63af9e 2b82adc8d9a069ea31d5bfd7a20ab152c99fad40 eliasalbag <eliasalbag97@gmail.com> 1773909950 +0000	WIP on aruco_localization_v2: 5d91191 add yaml file for the camera calibration
