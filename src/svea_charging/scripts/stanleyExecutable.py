@@ -2,7 +2,7 @@
 
 import numpy as np
 from geometry_msgs.msg import Point
-from geometry_msgs.msg import PoseArray, PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseArray, PoseWithCovarianceStamped, Pose
 from visualization_msgs.msg import Marker
 import time
 
@@ -60,6 +60,7 @@ class stanley_control(rx.Node):
     goal_tolerance = rx.Parameter(0.2) #m
 
     #Publishers
+    aruco_to_map = rx.Publisher(Pose,'aruco_to_map', qos_pubber)
     goal_pub = rx.Publisher(Marker, 'goal_marker', qos_pubber)
     path_pub = rx.Publisher(Marker, 'path_marker', qos_pubber)
     traj_pub = rx.Publisher(Marker, 'traj_marker', qos_pubber)
@@ -240,8 +241,12 @@ class stanley_control(rx.Node):
         A_1_3 = A_1_2 @ A_2_3
         p0 = d0 + A_1_2 @ d1 + A_1_3 @ d2 
         #self.get_logger().info((f"x:{aruco_x}, y: {aruco_y}"))
-        self.get_logger().info((f"x:{p0[0]}, y: {p0[1]}"))
-
+        #self.get_logger().info((f"x:{p0[0]}, y: {p0[1]}"))
+        skit = Pose()
+        skit.position.x = p0[0]
+        skit.position.y = p0[1]
+        skit.position.z = p0[2]
+        self.aruco_to_map.publish(skit)
         
 
     def distance_to_goal(self, state):
