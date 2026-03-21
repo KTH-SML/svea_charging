@@ -64,6 +64,10 @@
             <param name="use_rviz" value="$(var use_foxglove)"/>
             <param name="is_sim" value="$(var is_sim)"/>
             <param name="image_topic" value="$(var camera_image_topic)"/>
+            <param name="steering_top" value="lli/ctrl/steering"/>
+            <param name="throttle_top" value="lli/ctrl/throttle"/>
+            <param name="highgear_top" value="lli/ctrl/highgear"/>
+            <param name="diff_top" value="lli/ctrl/diff"/>
         </node>
 
 
