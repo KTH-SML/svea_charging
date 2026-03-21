@@ -13,7 +13,7 @@ from svea_core.interfaces import ActuationInterface
 
 class line_follower(rx.Node):
     dt = rx.Parameter(0.05)
-    image_topic = rx.Parameter("camera1/camera/image_raw")
+    image_topic = rx.Parameter("/camera/image_raw")
     target_velocity = rx.Parameter(0.4)
     max_velocity = rx.Parameter(0.7)
     stop_on_lost_line = rx.Parameter(True)
