@@ -9,8 +9,9 @@ import cv2
 import numpy as np
 import rclpy
 import yaml
+from cv_bridge import CvBridge
 from geometry_msgs.msg import Pose, PoseArray
-from sensor_msgs.msg import CompressedImage
+from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import Int32MultiArray, String, Float32
 
 from svea_core import rosonic as rx
@@ -218,14 +219,13 @@ class aruco_camera_test(rx.Node):
     output = rx.Parameter("aruco_marker.png")
     generate_marker_on_startup = rx.Parameter(False)
 
-    camera_index = rx.Parameter(0)
+    image_topic = rx.Parameter("/camera1/image_raw")
     marker_length_m = rx.Parameter(0.05)
     calibration_file = rx.Parameter("")
     focal_length_px = rx.Parameter(-1.0)
     display = rx.Parameter(False)
     loop_hz = rx.Parameter(30.0)
     frame_id = rx.Parameter("camera")
-    camera_backend = rx.Parameter("ANY")  # ANY, V4L2, GSTREAMER, FFMPEG
     use_aruco_detector_api = rx.Parameter(False)
     publish_debug_image = rx.Parameter(True)
     jpeg_quality = rx.Parameter(80)
@@ -237,7 +237,8 @@ class aruco_camera_test(rx.Node):
     distance_pub = rx.Publisher(Float32, "aruco/distance_m")
 
     def on_startup(self):
-        self.cap = None
+        self.bridge = CvBridge()
+        self.latest_frame = None
         self._warned_fallback_intrinsics = False
 
         try:
@@ -290,37 +291,16 @@ class aruco_camera_test(rx.Node):
             self.get_logger().error(f"Calibration load failed: {exc}")
             self.calibrated_camera_matrix, self.calibrated_dist_coeffs = None, None
 
-        backend_name = str(self.camera_backend).upper()
-        backend_map = {
-            "ANY": getattr(cv2, "CAP_ANY", 0),
-            "V4L2": getattr(cv2, "CAP_V4L2", getattr(cv2, "CAP_ANY", 0)),
-            "GSTREAMER": getattr(cv2, "CAP_GSTREAMER", getattr(cv2, "CAP_ANY", 0)),
-            "FFMPEG": getattr(cv2, "CAP_FFMPEG", getattr(cv2, "CAP_ANY", 0)),
-        }
-        backend = backend_map.get(backend_name, getattr(cv2, "CAP_ANY", 0))
-        self.get_logger().info(
-            f"Opening camera index {int(self.camera_index)} with backend={backend_name}..."
+        self.create_subscription(
+            Image,
+            str(self.image_topic),
+            self._image_callback,
+            1,
         )
-        self.cap = cv2.VideoCapture(int(self.camera_index), backend)
-        if not self.cap.isOpened():
-            self.get_logger().error(
-                f"Could not open camera index {int(self.camera_index)} with backend={backend_name}"
-            )
-            self.cap.release()
-            self.cap = None
-            return
-
-        self.get_logger().info("Camera opened. Performing first frame read...")
-        ok, _ = self.cap.read()
-        if not ok:
-            self.get_logger().error("Camera opened but first frame read failed.")
-            self.cap.release()
-            self.cap = None
-            return
 
         self.get_logger().info(
             "ArUco camera node started "
-            f"(camera_index={int(self.camera_index)}, backend={backend_name}, dictionary={self.dictionary})"
+            f"(image_topic={self.image_topic}, dictionary={self.dictionary})"
         )
         if self._marker_length_m is not None and self.calibrated_camera_matrix is None:
             self.get_logger().warning(
@@ -331,11 +311,14 @@ class aruco_camera_test(rx.Node):
         self.create_timer(period, self.loop)
 
     def on_shutdown(self):
-        if getattr(self, "cap", None) is not None:
-            self.cap.release()
-            self.cap = None
         if bool(self.display):
             cv2.destroyAllWindows()
+
+    def _image_callback(self, msg: Image):
+        try:
+            self.latest_frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+        except Exception as exc:
+            self.get_logger().error(f"Failed to convert image: {exc}")
 
     def _publish_status(self, text: str):
         msg = String()
@@ -370,15 +353,10 @@ class aruco_camera_test(rx.Node):
         self.debug_image_pub.publish(msg)
 
     def loop(self):
-        if self.cap is None:
+        if self.latest_frame is None:
             return
 
-        ok, frame = self.cap.read()
-        if not ok:
-            self._publish_ids([])
-            self.poses_pub.publish(self._empty_pose_array())
-            self._publish_status("camera_read_failed")
-            return
+        frame = self.latest_frame.copy()
 
         corners, ids, rejected = detect_markers(
             self.aruco,
