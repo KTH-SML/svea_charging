@@ -13,7 +13,7 @@
     <arg name="state" default="[-7.4, -15.3, 0.9, 0.0]" />
 
     <arg name="use_aruco_camera" default="true"/>
-    <arg name="camera_image_topic" default="/camera/image_raw"/>
+    <arg name="camera_image_topic" default="/svea67/image_raw"/>
     <arg name="aruco_dictionary" default="DICT_4X4_50"/>
     <arg name="aruco_marker_length_m" default="0.365"/>
     <arg name="aruco_display" default="false"/>
@@ -48,7 +48,7 @@
         <push-ros-namespace namespace="$(var name)"/>
 
         <node name="usb_cam_node" pkg="usb_cam" exec="usb_cam_node_exe" output="screen">
-            <param name="video_device" value="/dev/video6"/>
+            <param name="video_device" value="/dev/video0"/>
             <param name="frame_id" value="camera"/>
             <param name="pixel_format" value="mjpeg2rgb"/>
             <param name="image_width" value="640"/>
@@ -64,10 +64,10 @@
             <param name="use_rviz" value="$(var use_foxglove)"/>
             <param name="is_sim" value="$(var is_sim)"/>
             <param name="image_topic" value="$(var camera_image_topic)"/>
-            <param name="steering_top" value="lli/ctrl/steering"/>
+            <!-- <param name="steering_top" value="lli/ctrl/steering"/>
             <param name="throttle_top" value="lli/ctrl/throttle"/>
             <param name="highgear_top" value="lli/ctrl/highgear"/>
-            <param name="diff_top" value="lli/ctrl/diff"/>
+            <param name="diff_top" value="lli/ctrl/diff"/> -->
         </node>
 
 
