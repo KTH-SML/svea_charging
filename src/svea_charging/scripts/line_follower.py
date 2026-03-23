@@ -18,7 +18,7 @@ class line_follower(rx.Node):
     max_velocity = rx.Parameter(0.7)
     stop_on_lost_line = rx.Parameter(True)
 
-    publish_debug_image = rx.Parameter(True)
+    publish_debug_image = rx.Parameter(False)
     debug_image_topic = rx.Parameter("line_follower/debug_image")
     debug_publish_every_n = rx.Parameter(3)
 
@@ -32,8 +32,8 @@ class line_follower(rx.Node):
 
     crop_start_ratio = rx.Parameter(0.55)
     min_contour_area = rx.Parameter(120)
-    steering_kp = rx.Parameter(0.55)
-    steering_ki = rx.Parameter(0.1)
+    steering_kp = rx.Parameter(3.5)
+    steering_ki = rx.Parameter(.5)
     steering_kd = rx.Parameter(0.0)
     steering_limit_rad = rx.Parameter(0.6)
     lost_line_steering_rad = rx.Parameter(0.0)
@@ -41,8 +41,8 @@ class line_follower(rx.Node):
 
     use_aruco_stop = rx.Parameter(True)
     aruco_distance_topic = rx.Parameter("aruco/distance_m")
-    aruco_stop_distance_m = rx.Parameter(0.25)
-    aruco_velocity_gain = rx.Parameter(1.0)
+    aruco_stop_distance_m = rx.Parameter(1.6)
+    aruco_velocity_gain = rx.Parameter(3)
 
     actuation = ActuationInterface()
 

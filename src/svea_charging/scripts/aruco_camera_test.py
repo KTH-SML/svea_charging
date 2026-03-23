@@ -219,7 +219,7 @@ class aruco_camera_test(rx.Node):
     output = rx.Parameter("aruco_marker.png")
     generate_marker_on_startup = rx.Parameter(False)
 
-    image_topic = rx.Parameter("/camera1/image_raw")
+    image_topic = rx.Parameter("/svea67/image_raw")
     marker_length_m = rx.Parameter(0.05)
     calibration_file = rx.Parameter("")
     focal_length_px = rx.Parameter(-1.0)
@@ -227,7 +227,7 @@ class aruco_camera_test(rx.Node):
     loop_hz = rx.Parameter(30.0)
     frame_id = rx.Parameter("camera")
     use_aruco_detector_api = rx.Parameter(False)
-    publish_debug_image = rx.Parameter(True)
+    publish_debug_image = rx.Parameter(False)
     jpeg_quality = rx.Parameter(80)
 
     detected_ids_pub = rx.Publisher(Int32MultiArray, "aruco/detected_ids")
