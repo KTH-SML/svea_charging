@@ -8,7 +8,7 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import Float32, String
 
 from svea_core import rosonic as rx
-from svea_core.interfaces import ActuationInterface
+from svea_core.interfaces import ActuationInterface, LocalizationInterface
 
 
 class line_follower(rx.Node):
@@ -32,8 +32,8 @@ class line_follower(rx.Node):
 
     crop_start_ratio = rx.Parameter(0.55)
     min_contour_area = rx.Parameter(120)
-    steering_kp = rx.Parameter(2.5)
-    steering_ki = rx.Parameter(.5)
+    steering_kp = rx.Parameter(2.1)
+    steering_ki = rx.Parameter(.4)
     steering_kd = rx.Parameter(0.0)
     steering_limit_rad = rx.Parameter(0.6)
     lost_line_steering_rad = rx.Parameter(0.0)
@@ -41,9 +41,20 @@ class line_follower(rx.Node):
 
     use_aruco_stop = rx.Parameter(True)
     aruco_distance_topic = rx.Parameter("aruco/distance_m")
-    aruco_stop_distance_m = rx.Parameter(1.6)
-    aruco_velocity_gain = rx.Parameter(5)
+    aruco_stop_distance_m = rx.Parameter(1.62235736)
+    aruco_distance_kp = rx.Parameter(8.0)
+    aruco_distance_ki = rx.Parameter(0.15)
+    aruco_distance_kd = rx.Parameter(0.0)
+    aruco_distance_integral_limit = rx.Parameter(1.0)
+    aruco_velocity_kp = rx.Parameter(8.0)
+    aruco_velocity_ki = rx.Parameter(0.15)
+    aruco_velocity_kd = rx.Parameter(0.0)
+    aruco_max_backup_velocity = rx.Parameter(0.35)
+    aruco_overshoot_deadband_m = rx.Parameter(0.03)
 
+    aruco_distance_integral_limit = rx.Parameter(1.0)
+
+    localizer = LocalizationInterface()
     actuation = ActuationInterface()
 
     line_error_pub = rx.Publisher(Float32, "line_follower/error_px")
@@ -66,6 +77,15 @@ class line_follower(rx.Node):
         
         self.steering_error_prev = 0.0
         self.steering_error_integral = 0.0
+
+        self.aruco_distance_error_prev = 0.0
+        self.aruco_distance_integral = 0.0
+        self.aruco_velocity_integral = 0.0
+        self.aruco_velocity_error_prev = 0.0
+        self.position_prev = 0.0
+
+        self.position_prev = 0.0
+        self.vel_error_prev = 0.0
 
         self.create_subscription(
             Image,
@@ -126,28 +146,7 @@ class line_follower(rx.Node):
 
         return line, mask
 
-    def loop(self):
-        frame = self.latest_frame
-        if frame is None:
-            return
-
-        _, width = frame.shape[:2]
-        image_center_x = width / 2.0
-
-        if self.latest_centroid is None:
-            self._publish_status("line_lost")
-            self.steering_error_prev = 0.0
-            self.steering_error_integral = 0.0
-            if bool(self.stop_on_lost_line):
-                self.actuation.send_control(float(self.lost_line_steering_rad), 0.0)
-            self._publish_debug_image(frame, None, None)
-            return
-
-        cx, cy = self.latest_centroid
-        error_px = cx - image_center_x
-        normalized_error = error_px / max(image_center_x, 1.0)
-
-        dt = self.dt_s
+    def _calculate_steering(self, normalized_error, dt):
         error_i = (normalized_error + self.steering_error_prev) / 2.0 * dt
         error_d = (normalized_error - self.steering_error_prev) / max(dt, 1e-6)
         self.steering_error_integral += error_i
@@ -172,15 +171,138 @@ class line_follower(rx.Node):
                 float(self.steering_limit_rad),
             )
         )
+        return steering
 
+    def _calculate_velocity(self, normalized_error, dt):
+        # Base velocity from line following
         if bool(self.velocity_scale_from_error):
             speed_scale = max(0.25, 1.0 - min(abs(normalized_error), 1.0))
         else:
             speed_scale = 1.0
+        base_velocity = min(
+            float(self.max_velocity),
+            float(self.target_velocity) * speed_scale,
+        )
 
-        velocity = float(self.target_velocity) * speed_scale
-        velocity = self._apply_aruco_stop_logic(velocity)
-        velocity = float(np.clip(velocity, 0.0, float(self.max_velocity)))
+        if not bool(self.use_aruco_stop):
+            self.aruco_distance_error_prev = 0.0
+            self.aruco_distance_integral = 0.0
+            self.aruco_velocity_error_prev = 0.0
+            self.aruco_velocity_integral = 0.0
+            self.position_prev = 0.0
+            return base_velocity
+
+        if self.aruco_distance <= 0.0:
+            self.aruco_distance_error_prev = 0.0
+            self.aruco_distance_integral = 0.0
+            self.aruco_velocity_error_prev = 0.0
+            self.aruco_velocity_integral = 0.0
+            self.position_prev = 0.0
+            return base_velocity
+
+        ref_dist = float(self.aruco_stop_distance_m)
+        dist = float(self.aruco_distance)
+        dist_error = dist - ref_dist
+        prev_dist_error = float(self.aruco_distance_error_prev)
+        overshoot_deadband = max(float(self.aruco_overshoot_deadband_m), 0.0)
+
+        crossed_target = (
+            abs(prev_dist_error) > overshoot_deadband
+            and abs(dist_error) > overshoot_deadband
+            and np.sign(prev_dist_error) != np.sign(dist_error)
+        )
+        if crossed_target:
+            self.aruco_distance_integral = 0.0
+            self.aruco_velocity_integral = 0.0
+            self.aruco_velocity_error_prev = 0.0
+
+        # PID control for distance
+        error_i = (dist_error + prev_dist_error) / 2.0 * dt
+        error_d = (dist_error - prev_dist_error) / max(dt, 1e-6)
+        self.aruco_distance_integral += error_i
+        self.aruco_distance_integral = float(
+            np.clip(
+                self.aruco_distance_integral,
+                -float(self.aruco_distance_integral_limit),
+                float(self.aruco_distance_integral_limit),
+            )
+        )
+        self.aruco_distance_error_prev = float(dist_error)
+
+        desired_velocity = (
+            float(self.aruco_distance_kp) * dist_error
+            + float(self.aruco_distance_ki) * self.aruco_distance_integral
+            + float(self.aruco_distance_kd) * error_d
+        )
+        backup_velocity_limit = min(
+            float(self.max_velocity),
+            float(self.aruco_max_backup_velocity),
+        )
+        desired_velocity = float(
+            np.clip(
+                desired_velocity,
+                -backup_velocity_limit,
+                base_velocity,
+            )
+        )
+
+        _, _, _, vel = self.localizer.get_state()
+        vel_error = desired_velocity - vel
+
+        # PID control for velocity
+        error_vel_i = (vel_error + self.aruco_velocity_error_prev) / 2.0 * dt
+        error_vel_d = (vel_error - self.aruco_velocity_error_prev) / max(dt, 1e-6)
+        self.aruco_velocity_integral += error_vel_i
+        self.aruco_velocity_integral = float(
+            np.clip(
+                self.aruco_velocity_integral,
+                -float(self.aruco_distance_integral_limit),
+                float(self.aruco_distance_integral_limit),
+            )
+        )
+
+        velocity = (
+            float(self.aruco_velocity_kp) * vel_error
+            + float(self.aruco_velocity_ki) * self.aruco_velocity_integral
+            + float(self.aruco_velocity_kd) * error_vel_d
+        )
+
+        self.aruco_velocity_error_prev = float(vel_error)
+        self.position_prev = float(dist_error)
+
+        velocity = float(
+            np.clip(
+                velocity,
+                -backup_velocity_limit,
+                base_velocity,
+            )
+        )
+        return velocity
+
+    def loop(self):
+        frame = self.latest_frame
+        if frame is None:
+            return
+
+        _, width = frame.shape[:2]
+        image_center_x = width / 2.0
+
+        if self.latest_centroid is None:
+            self._publish_status("line_lost")
+            self.steering_error_prev = 0.0
+            self.steering_error_integral = 0.0
+            if bool(self.stop_on_lost_line):
+                self.actuation.send_control(float(self.lost_line_steering_rad), 0.0)
+            self._publish_debug_image(frame, None, None)
+            return
+
+        cx, cy = self.latest_centroid
+        error_px = cx - image_center_x
+        normalized_error = error_px / max(image_center_x, 1.0)
+
+        dt = self.dt_s
+        steering = self._calculate_steering(normalized_error, dt)
+        velocity = self._calculate_velocity(normalized_error, dt)
 
         self.actuation.send_control(steering, velocity)
         self.line_error_pub.publish(Float32(data=float(error_px)))
@@ -194,33 +316,21 @@ class line_follower(rx.Node):
 
         self._publish_debug_image(frame, (cx, cy), error_px)
 
+
     def _publish_status(self, text: str):
         self.status_pub.publish(String(data=text))
 
     def _get_status_text(self, velocity: float) -> str:
-        if not bool(self.use_aruco_stop) or self.aruco_distance <= 0.0:
+        if not bool(self.use_aruco_stop) or self.aruco_distance <= 0.0 or self.aruco_distance > self.aruco_stop_distance_m + 0.5:
             return "tracking"
 
-        if velocity <= 0.0:
+        if velocity < 0.0:
+            return "backing_up_to_aruco"
+
+        if abs(velocity) < 1e-3:
             return "stopped_at_aruco"
 
         return "approaching_aruco"
-
-    def _apply_aruco_stop_logic(self, velocity: float) -> float:
-        if not bool(self.use_aruco_stop):
-            return velocity
-
-        distance = float(self.aruco_distance)
-        if distance <= 0.0:
-            return velocity
-
-        stop_distance = float(self.aruco_stop_distance_m)
-
-        if distance <= stop_distance:
-            return 0.0
-
-        regulated_velocity = float(self.aruco_velocity_gain) * (distance - stop_distance)
-        return min(velocity, max(0.0, regulated_velocity))
 
     def _publish_debug_image(self, frame, centroid, error_px):
         if not bool(self.publish_debug_image):

@@ -38,6 +38,7 @@
 
     <group unless="$(var is_sim)">
         <let name="name" value="svea67"/> 
+        <push-ros-namespace namespace="$(var name)"/>
        
         <!-- Start Svea Core -->
         <include file="$(find-pkg-share svea_core)/launch/svea.xml">
@@ -45,7 +46,7 @@
             <arg name="is_sim" value="$(var is_sim)" />
             <arg name="map" value="$(var map)" />
         </include>
-        <push-ros-namespace namespace="$(var name)"/>
+
 
         <node name="usb_cam_node" pkg="usb_cam" exec="usb_cam_node_exe" output="screen">
             <param name="video_device" value="/dev/video0"/>
