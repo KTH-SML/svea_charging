@@ -32,7 +32,7 @@ class line_follower(rx.Node):
 
     crop_start_ratio = rx.Parameter(0.55)
     min_contour_area = rx.Parameter(120)
-    steering_kp = rx.Parameter(3.5)
+    steering_kp = rx.Parameter(2.5)
     steering_ki = rx.Parameter(.5)
     steering_kd = rx.Parameter(0.0)
     steering_limit_rad = rx.Parameter(0.6)
@@ -42,7 +42,7 @@ class line_follower(rx.Node):
     use_aruco_stop = rx.Parameter(True)
     aruco_distance_topic = rx.Parameter("aruco/distance_m")
     aruco_stop_distance_m = rx.Parameter(1.6)
-    aruco_velocity_gain = rx.Parameter(3)
+    aruco_velocity_gain = rx.Parameter(5)
 
     actuation = ActuationInterface()
 
