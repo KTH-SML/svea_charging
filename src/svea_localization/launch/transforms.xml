@@ -40,7 +40,7 @@
 
     <node pkg="tf2_ros" exec="static_transform_publisher" name="camera" 
         args="
-            --x 0.3 --y 0 --z 0 --yaw 0 --pitch 0 --roll 0
+            --x 0.42 --y 0 --z 0 --yaw 0 --pitch 0 --roll 0
             --frame-id $(var base_frame)
             --child-frame-id $(var name)/camera"/>
 

@@ -239,6 +239,7 @@ class aruco_camera_test(rx.Node):
     def on_startup(self):
         self.cap = None
         self._warned_fallback_intrinsics = False
+        self._target_marker_id = int(self.marker_id)
 
         try:
             self.get_logger().info("Initializing OpenCV ArUco module...")
@@ -394,12 +395,26 @@ class aruco_camera_test(rx.Node):
         overlay_color = (0, 0, 255)
 
         if ids is not None and len(ids) > 0:
-            ids_list = [int(i) for i in ids.flatten()]
-            self.aruco.drawDetectedMarkers(frame, corners, ids)
-            status_text = f"Detected IDs: {ids_list}"
-            overlay_color = (0, 200, 0)
+            detected_ids = ids.flatten()
+            target_indices = [
+                i for i, detected_id in enumerate(detected_ids)
+                if int(detected_id) == self._target_marker_id
+            ]
 
-            if self._marker_length_m is not None:
+            if target_indices:
+                filtered_corners = [corners[i] for i in target_indices]
+                filtered_ids = np.array(
+                    [[int(detected_ids[i])] for i in target_indices],
+                    dtype=ids.dtype,
+                )
+                ids_list = [int(detected_ids[i]) for i in target_indices]
+                self.aruco.drawDetectedMarkers(frame, filtered_corners, filtered_ids)
+                status_text = f"Detected target ID: {ids_list}"
+                overlay_color = (0, 200, 0)
+            else:
+                status_text = f"Marker {self._target_marker_id} not detected"
+
+            if target_indices and self._marker_length_m is not None:
                 if self.calibrated_camera_matrix is None:
                     camera_matrix, dist_coeffs = get_fallback_camera_matrix(
                         frame.shape, self._focal_length_px
@@ -413,13 +428,13 @@ class aruco_camera_test(rx.Node):
 
                 rvecs, tvecs = estimate_pose_for_markers(
                     self.aruco,
-                    corners,
+                    filtered_corners,
                     self._marker_length_m,
                     camera_matrix,
                     dist_coeffs,
                 )
 
-                for i, marker_id in enumerate(ids.flatten()):
+                for i, marker_id in enumerate(filtered_ids.flatten()):
                     rvec = rvecs[i]
                     tvec = tvecs[i]
                     marker_txyz, marker_rvec = invert_camera_pose_to_marker_frame(rvec, tvec)
@@ -429,8 +444,8 @@ class aruco_camera_test(rx.Node):
 
                     pose = Pose()
                     pose.position.x = float(marker_txyz[0])
-                    pose.position.y = float(marker_txyz[2])
-                    pose.position.z = float(marker_txyz[1])
+                    pose.position.y = float(marker_txyz[1])
+                    pose.position.z = float(marker_txyz[2])
                     pose.orientation.x = float(qxyzw[0])
                     pose.orientation.y = float(qxyzw[1])
                     pose.orientation.z = float(qxyzw[2])
@@ -446,7 +461,7 @@ class aruco_camera_test(rx.Node):
                         axis_length_m=max(self._marker_length_m * 0.5, 0.02),
                     )
 
-                    anchor = corners[i][0][0]
+                    anchor = filtered_corners[i][0][0]
                     x_px, y_px = int(anchor[0]), int(anchor[1])
                     distance_m = float(np.linalg.norm(marker_txyz))
                     lines = [

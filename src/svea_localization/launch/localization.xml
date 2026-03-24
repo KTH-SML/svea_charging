@@ -62,10 +62,10 @@
                     <push-ros-namespace namespace="$(var name)"/>
                     
                     <!-- Start LiDAR -->
-                    <include file="$(find-pkg-share svea_localization)/launch/lidar.xml">
+                    <!-- <include file="$(find-pkg-share svea_localization)/launch/lidar.xml">
                         <arg name="lidar_ip"    value="$(var lidar_ip)"/>
                         <arg name="lidar_frame" value="$(var name)/laser"/>
-                    </include>
+                    </include> -->
                 </group>
 
                 <!-- Start AMCL -->
@@ -81,7 +81,7 @@
                     <param name="odom_frame_id"     value="$(var odom_frame)"/>
                     <param name="map_frame_id"      value="$(var map_frame)"/>
                     <param name="map_topic"         value="/map"/>
-                    <!-- <param name="always_reset_initial_pose" value="true"/> -->
+                    <param name="always_reset_initial_pose" value="true"/>
                 </node>
                 <node pkg="nav2_lifecycle_manager" exec="lifecycle_manager" name="lifecycle_manager_amcl" output="screen">
                     <param name="use_sim_time" value="$(var use_sim_time)"/>

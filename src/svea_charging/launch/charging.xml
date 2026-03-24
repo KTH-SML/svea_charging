@@ -40,6 +40,7 @@
     <!-- Simulation -->
     <group if="$(var is_sim)">
         <let name="name" value="self"/> 
+        <push-ros-namespace namespace="$(var name)"/>
 
         <!-- Start Svea Core -->
         <include file="$(find-pkg-share svea_core)/launch/svea.xml">
@@ -54,7 +55,7 @@
 
         <group>
         
-            <push-ros-namespace namespace="$(var name)"/>
+            
 
             <!-- Start stanleyController -->
             <node name="stanleyExecutable" pkg="svea_charging" exec="stanleyExecutable.py" output="screen">
@@ -74,9 +75,7 @@
 
     <group unless="$(var is_sim)">
         <let name="name" value="svea67"/> 
-
-
-       
+        
 
         <!-- Start Svea Core -->
         <include file="$(find-pkg-share svea_core)/launch/svea_mocap.xml">
