@@ -4,11 +4,12 @@ import cv2
 import numpy as np
 from cv_bridge import CvBridge
 from geometry_msgs.msg import Point
+from geometry_msgs.msg import Twist
 from sensor_msgs.msg import Image
 from std_msgs.msg import Float32, String
 
 from svea_core import rosonic as rx
-from svea_core.interfaces import ActuationInterface, LocalizationInterface
+from svea_core.interfaces import LocalizationInterface
 
 
 class line_follower(rx.Node):
@@ -55,8 +56,8 @@ class line_follower(rx.Node):
     aruco_distance_integral_limit = rx.Parameter(1.0)
 
     localizer = LocalizationInterface()
-    actuation = ActuationInterface()
 
+    cmd_pub = rx.Publisher(Twist, "controller_cmd/line_follower")
     line_error_pub = rx.Publisher(Float32, "line_follower/error_px")
     status_pub = rx.Publisher(String, "line_follower/status")
     centroid_pub = rx.Publisher(Point, "line_follower/centroid")
@@ -101,7 +102,7 @@ class line_follower(rx.Node):
         )
 
     def on_shutdown(self):
-        self.actuation.send_control(0.0, 0.0)
+        self._publish_command(0.0, 0.0)
 
     def _image_callback(self, msg: Image):
         try:
@@ -292,7 +293,7 @@ class line_follower(rx.Node):
             self.steering_error_prev = 0.0
             self.steering_error_integral = 0.0
             if bool(self.stop_on_lost_line):
-                self.actuation.send_control(float(self.lost_line_steering_rad), 0.0)
+                self._publish_command(float(self.lost_line_steering_rad), 0.0)
             self._publish_debug_image(frame, None, None)
             return
 
@@ -304,7 +305,7 @@ class line_follower(rx.Node):
         steering = self._calculate_steering(normalized_error, dt)
         velocity = self._calculate_velocity(normalized_error, dt)
 
-        self.actuation.send_control(steering, velocity)
+        self._publish_command(steering, velocity)
         self.line_error_pub.publish(Float32(data=float(error_px)))
         self._publish_status(self._get_status_text(velocity))
 
@@ -319,6 +320,12 @@ class line_follower(rx.Node):
 
     def _publish_status(self, text: str):
         self.status_pub.publish(String(data=text))
+
+    def _publish_command(self, steering: float, velocity: float):
+        msg = Twist()
+        msg.linear.x = float(velocity)
+        msg.angular.z = float(steering)
+        self.cmd_pub.publish(msg)
 
     def _get_status_text(self, velocity: float) -> str:
         if not bool(self.use_aruco_stop) or self.aruco_distance <= 0.0 or self.aruco_distance > self.aruco_stop_distance_m + 0.5:

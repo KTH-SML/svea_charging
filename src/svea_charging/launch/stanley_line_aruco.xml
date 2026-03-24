@@ -1,0 +1,131 @@
+<?xml version="1.0"?>
+<launch>
+    <arg name="map" default="sml"/>
+    <arg name="is_sim" default="true"/>
+    <arg name="use_mocap" default="true"/>
+    <arg name="use_foxglove" default="true"/>
+    <arg name="initial_pose_x" default="-2.5"/>
+    <arg name="initial_pose_y" default="0.0"/>
+    <arg name="initial_pose_a" default="0.0"/>
+    <arg name="state" default="[-7.4, -15.3, 0.9, 0.0]"/>
+
+    <arg name="use_usb_cam" default="true"/>
+    <arg name="camera_image_topic" default="/svea67/image_raw"/>
+    <arg name="camera_info_url" default="file:///svea_ws/src/svea_charging/params/camera/camera.yaml"/>
+
+    <arg name="use_aruco_camera" default="true"/>
+    <arg name="aruco_dictionary" default="DICT_4X4_50"/>
+    <arg name="aruco_marker_length_m" default="0.365"/>
+    <arg name="aruco_display" default="false"/>
+    <arg name="aruco_loop_hz" default="30.0"/>
+    <arg name="aruco_frame_id" default="svea67/camera"/>
+    <arg name="aruco_use_aruco_detector_api" default="false"/>
+    <arg name="aruco_publish_debug_image" default="false"/>
+    <arg name="aruco_jpeg_quality" default="80"/>
+    <arg name="aruco_generate_marker_on_startup" default="false"/>
+    <arg name="aruco_marker_id" default="13"/>
+    <arg name="aruco_marker_size_px" default="400"/>
+    <arg name="aruco_output" default="aruco_marker.png"/>
+    <arg name="aruco_calibration_file" default="/svea_ws/src/svea_charging/params/camera/camera.yaml"/>
+    <arg name="aruco_focal_length_px" default="-1.0"/>
+
+    <arg name="manager_start_controller" default="stanley"/>
+    <arg name="manager_switch_dist_to_goal_m" default="1.8"/>
+    <arg name="manager_switch_aruco_distance_m" default="2.5"/>
+    <arg name="manager_allow_switch_back" default="false"/>
+    <arg name="mux_command_timeout_s" default="0.3"/>
+
+    <include file="$(find-pkg-share svea_core)/launch/map_and_foxglove.xml">
+        <arg name="map" value="$(var map)" />
+        <arg name="use_foxglove" value="$(var use_foxglove)" />
+    </include>
+
+    <group if="$(var is_sim)">
+        <let name="name" value="self"/>
+
+        <include file="$(find-pkg-share svea_core)/launch/svea.xml">
+            <arg name="name" value="$(var name)" />
+            <arg name="is_sim" value="$(var is_sim)" />
+            <arg name="map" value="$(var map)" />
+            <arg name="initial_pose_x" value="$(var initial_pose_x)" />
+            <arg name="initial_pose_y" value="$(var initial_pose_y)" />
+            <arg name="initial_pose_a" value="$(var initial_pose_a)" />
+            <arg name="state" value="$(var state)" />
+        </include>
+
+        <group>
+            <push-ros-namespace namespace="$(var name)"/>
+            <include file="$(find-pkg-share svea_charging)/launch/_stanley_line_aruco_nodes.xml">
+                <arg name="is_sim" value="$(var is_sim)" />
+                <arg name="use_mocap" value="$(var use_mocap)" />
+                <arg name="camera_image_topic" value="$(var camera_image_topic)" />
+                <arg name="camera_info_url" value="$(var camera_info_url)" />
+                <arg name="use_usb_cam" value="false" />
+                <arg name="use_aruco_camera" value="$(var use_aruco_camera)" />
+                <arg name="aruco_dictionary" value="$(var aruco_dictionary)" />
+                <arg name="aruco_marker_length_m" value="$(var aruco_marker_length_m)" />
+                <arg name="aruco_display" value="$(var aruco_display)" />
+                <arg name="aruco_loop_hz" value="$(var aruco_loop_hz)" />
+                <arg name="aruco_frame_id" value="$(var aruco_frame_id)" />
+                <arg name="aruco_use_aruco_detector_api" value="$(var aruco_use_aruco_detector_api)" />
+                <arg name="aruco_publish_debug_image" value="$(var aruco_publish_debug_image)" />
+                <arg name="aruco_jpeg_quality" value="$(var aruco_jpeg_quality)" />
+                <arg name="aruco_generate_marker_on_startup" value="$(var aruco_generate_marker_on_startup)" />
+                <arg name="aruco_marker_id" value="$(var aruco_marker_id)" />
+                <arg name="aruco_marker_size_px" value="$(var aruco_marker_size_px)" />
+                <arg name="aruco_output" value="$(var aruco_output)" />
+                <arg name="aruco_calibration_file" value="$(var aruco_calibration_file)" />
+                <arg name="aruco_focal_length_px" value="$(var aruco_focal_length_px)" />
+                <arg name="manager_start_controller" value="$(var manager_start_controller)" />
+                <arg name="manager_switch_dist_to_goal_m" value="$(var manager_switch_dist_to_goal_m)" />
+                <arg name="manager_switch_aruco_distance_m" value="$(var manager_switch_aruco_distance_m)" />
+                <arg name="manager_allow_switch_back" value="$(var manager_allow_switch_back)" />
+                <arg name="mux_command_timeout_s" value="$(var mux_command_timeout_s)" />
+                <arg name="localization_base_frame" value="$(var name)/base_link" />
+            </include>
+        </group>
+    </group>
+
+    <group unless="$(var is_sim)">
+        <let name="name" value="svea67"/>
+        <push-ros-namespace namespace="$(var name)"/>
+        
+        <include file="$(find-pkg-share svea_core)/launch/svea_mocap.xml">
+            <arg name="name" value="$(var name)" />
+            <arg name="is_sim" value="$(var is_sim)" />
+            <arg name="map" value="$(var map)" />
+        </include>
+
+        <group>
+        
+            <include file="$(find-pkg-share svea_charging)/launch/_stanley_line_aruco_nodes.xml">
+                <arg name="is_sim" value="$(var is_sim)" />
+                <arg name="use_mocap" value="$(var use_mocap)" />
+                <arg name="camera_image_topic" value="$(var camera_image_topic)" />
+                <arg name="camera_info_url" value="$(var camera_info_url)" />
+                <arg name="use_usb_cam" value="$(var use_usb_cam)" />
+                <arg name="use_aruco_camera" value="$(var use_aruco_camera)" />
+                <arg name="aruco_dictionary" value="$(var aruco_dictionary)" />
+                <arg name="aruco_marker_length_m" value="$(var aruco_marker_length_m)" />
+                <arg name="aruco_display" value="$(var aruco_display)" />
+                <arg name="aruco_loop_hz" value="$(var aruco_loop_hz)" />
+                <arg name="aruco_frame_id" value="$(var aruco_frame_id)" />
+                <arg name="aruco_use_aruco_detector_api" value="$(var aruco_use_aruco_detector_api)" />
+                <arg name="aruco_publish_debug_image" value="$(var aruco_publish_debug_image)" />
+                <arg name="aruco_jpeg_quality" value="$(var aruco_jpeg_quality)" />
+                <arg name="aruco_generate_marker_on_startup" value="$(var aruco_generate_marker_on_startup)" />
+                <arg name="aruco_marker_id" value="$(var aruco_marker_id)" />
+                <arg name="aruco_marker_size_px" value="$(var aruco_marker_size_px)" />
+                <arg name="aruco_output" value="$(var aruco_output)" />
+                <arg name="aruco_calibration_file" value="$(var aruco_calibration_file)" />
+                <arg name="aruco_focal_length_px" value="$(var aruco_focal_length_px)" />
+                <arg name="manager_start_controller" value="$(var manager_start_controller)" />
+                <arg name="manager_switch_dist_to_goal_m" value="$(var manager_switch_dist_to_goal_m)" />
+                <arg name="manager_switch_aruco_distance_m" value="$(var manager_switch_aruco_distance_m)" />
+                <arg name="manager_allow_switch_back" value="$(var manager_allow_switch_back)" />
+                <arg name="mux_command_timeout_s" value="$(var mux_command_timeout_s)" />
+                <arg name="localization_base_frame" value="$(var name)/base_link" />
+            </include>
+        </group>
+    </group>
+</launch>

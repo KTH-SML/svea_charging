@@ -3,12 +3,12 @@
 import numpy as np
 from geometry_msgs.msg import Point
 from geometry_msgs.msg import PoseArray, PoseWithCovarianceStamped, Pose
+from geometry_msgs.msg import Twist
 from visualization_msgs.msg import Marker
 import time
 
 from svea_core.interfaces import LocalizationInterface
 from svea_charging.controllers.stanleyController import StanleyController
-from svea_core.interfaces import ActuationInterface
 from svea_core import rosonic as rx
 from std_msgs.msg import Float32
 from tf_transformations import euler_from_quaternion
@@ -55,11 +55,11 @@ class stanley_control(rx.Node):
 
 
     # Interfaces
-    actuation = ActuationInterface()
     localizer = LocalizationInterface()
     goal_tolerance = rx.Parameter(0.2) #m
 
     #Publishers
+    cmd_pub = rx.Publisher(Twist, 'controller_cmd/stanley', qos_pubber)
     aruco_to_map = rx.Publisher(Pose,'aruco_to_map', qos_pubber)
     goal_pub = rx.Publisher(Marker, 'goal_marker', qos_pubber)
     path_pub = rx.Publisher(Marker, 'path_marker', qos_pubber)
@@ -160,6 +160,8 @@ class stanley_control(rx.Node):
         self.controller.update_traj(state, self.waypoints)
         self.create_timer(self.DELTA_TIME, self.loop)
 
+    def on_shutdown(self):
+        self.publish_command(0.0, 0.0)
 
     def loop(self):
         """
@@ -184,7 +186,7 @@ class stanley_control(rx.Node):
             steering, velocity = np.deg2rad(16), 0.0
             self.velocity = 0.0
 
-        self.actuation.send_control(steering, velocity)
+        self.publish_command(steering, velocity)
         self.publish_errors()
         self.dist_to_goal.publish(Float32(data=dist))
         
@@ -247,6 +249,12 @@ class stanley_control(rx.Node):
         skit.position.y = p0[1]
         skit.position.z = p0[2]
         self.aruco_to_map.publish(skit)
+
+    def publish_command(self, steering, velocity):
+        msg = Twist()
+        msg.linear.x = float(velocity)
+        msg.angular.z = float(steering)
+        self.cmd_pub.publish(msg)
         
 
     def distance_to_goal(self, state):
