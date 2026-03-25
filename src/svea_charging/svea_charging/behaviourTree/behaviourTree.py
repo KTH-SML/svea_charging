@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from svea_charging.third_party.btree import ActionNode, Fallback, NodeStatus, Sequence
+from svea_charging.third_party.btree.btree import (
+    ActionNode,
+    Fallback,
+    NodeStatus,
+    Sequence,
+)
 
 
 @dataclass
