@@ -3,7 +3,7 @@
     <!-- Launch file arguments -->
     <arg name="map"             default="sml"/>
     <arg name="is_sim"          default="true"/>
-    <arg name="use_mocap"          default="false"/>
+    <arg name="use_mocap"          default="true"/>
     <arg name="use_foxglove"    default="true"/>
     <arg name="initial_pose_x"  default="-2.5"/> <!-- changed-->
     <arg name="initial_pose_y"  default="0.0"/> <!-- changed-->

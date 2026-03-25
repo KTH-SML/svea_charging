@@ -41,7 +41,6 @@ class ActionNode(Node):
         else:
             self.currentRunningNode = None
 
-        print(f"  {self.name}: {status}")
         return status
 
 
@@ -67,7 +66,7 @@ class Composite(Node):
 
     # shared utility for readable debug output
     def _trace(self, msg: str) -> None:
-        print(f"{self.name}: {msg}")
+        return None
 
 
 class Fallback(Composite):
