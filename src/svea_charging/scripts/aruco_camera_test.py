@@ -8,6 +8,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import rclpy
+import yaml
 from geometry_msgs.msg import Pose, PoseArray
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import Int32MultiArray, String, Float32
@@ -88,10 +89,29 @@ def load_calibration(calibration_file: Path | None):
     if calibration_file is None:
         return None, None
 
+    if calibration_file.suffix.lower() in {".yaml", ".yml"}:
+        with calibration_file.open("r", encoding="utf-8") as handle:
+            data = yaml.safe_load(handle)
+
+        try:
+            camera_matrix_data = data["camera_matrix"]["data"]
+            dist_coeffs_data = data["distortion_coefficients"]["data"]
+        except (TypeError, KeyError) as exc:
+            raise ValueError(
+                "Kalibreringsfilen måste innehålla 'camera_matrix.data' och "
+                "'distortion_coefficients.data' (.yaml)."
+            ) from exc
+
+        camera_matrix = np.array(camera_matrix_data, dtype=np.float32).reshape(3, 3)
+        dist_coeffs = np.array(dist_coeffs_data, dtype=np.float32).reshape(-1, 1)
+        return camera_matrix, dist_coeffs
+
     data = np.load(str(calibration_file))
     if "camera_matrix" not in data or "dist_coeffs" not in data:
         raise ValueError(
-            "Kalibreringsfilen måste innehålla 'camera_matrix' och 'dist_coeffs' (.npz)."
+            "Kalibreringsfilen måste innehålla 'camera_matrix' och 'dist_coeffs' "
+            "(.npz) eller ROS-formatet med 'camera_matrix.data' och "
+            "'distortion_coefficients.data' (.yaml)."
         )
 
     camera_matrix = data["camera_matrix"]
@@ -111,6 +131,17 @@ def get_fallback_camera_matrix(frame_shape, focal_length_px: float | None):
     )
     dist_coeffs = np.zeros((5, 1), dtype=np.float32)
     return camera_matrix, dist_coeffs
+
+
+def invert_camera_pose_to_marker_frame(rvec, tvec):
+    marker_to_camera_r = cv2.Rodrigues(np.asarray(rvec).reshape(3).astype(np.float64))[0]
+    tvec_camera = np.asarray(tvec).reshape(3, 1).astype(np.float64)
+
+    marker_position = (-marker_to_camera_r.T @ tvec_camera).reshape(-1)
+    marker_rotation = marker_to_camera_r.T
+    marker_rvec = cv2.Rodrigues(marker_rotation)[0]
+
+    return marker_position, marker_rvec
 
 
 def rvec_to_euler_deg(rvec):
@@ -208,6 +239,7 @@ class aruco_camera_test(rx.Node):
     def on_startup(self):
         self.cap = None
         self._warned_fallback_intrinsics = False
+        self._target_marker_id = int(self.marker_id)
 
         try:
             self.get_logger().info("Initializing OpenCV ArUco module...")
@@ -363,12 +395,26 @@ class aruco_camera_test(rx.Node):
         overlay_color = (0, 0, 255)
 
         if ids is not None and len(ids) > 0:
-            ids_list = [int(i) for i in ids.flatten()]
-            self.aruco.drawDetectedMarkers(frame, corners, ids)
-            status_text = f"Detected IDs: {ids_list}"
-            overlay_color = (0, 200, 0)
+            detected_ids = ids.flatten()
+            target_indices = [
+                i for i, detected_id in enumerate(detected_ids)
+                if int(detected_id) == self._target_marker_id
+            ]
 
-            if self._marker_length_m is not None:
+            if target_indices:
+                filtered_corners = [corners[i] for i in target_indices]
+                filtered_ids = np.array(
+                    [[int(detected_ids[i])] for i in target_indices],
+                    dtype=ids.dtype,
+                )
+                ids_list = [int(detected_ids[i]) for i in target_indices]
+                self.aruco.drawDetectedMarkers(frame, filtered_corners, filtered_ids)
+                status_text = f"Detected target ID: {ids_list}"
+                overlay_color = (0, 200, 0)
+            else:
+                status_text = f"Marker {self._target_marker_id} not detected"
+
+            if target_indices and self._marker_length_m is not None:
                 if self.calibrated_camera_matrix is None:
                     camera_matrix, dist_coeffs = get_fallback_camera_matrix(
                         frame.shape, self._focal_length_px
@@ -382,23 +428,24 @@ class aruco_camera_test(rx.Node):
 
                 rvecs, tvecs = estimate_pose_for_markers(
                     self.aruco,
-                    corners,
+                    filtered_corners,
                     self._marker_length_m,
                     camera_matrix,
                     dist_coeffs,
                 )
 
-                for i, marker_id in enumerate(ids.flatten()):
+                for i, marker_id in enumerate(filtered_ids.flatten()):
                     rvec = rvecs[i]
                     tvec = tvecs[i]
-                    txyz = np.asarray(tvec).reshape(-1)
-                    qxyzw = rvec_to_quaternion_xyzw(rvec)
-                    roll_deg, pitch_deg, yaw_deg = rvec_to_euler_deg(rvec)
+                    marker_txyz, marker_rvec = invert_camera_pose_to_marker_frame(rvec, tvec)
+                    marker_rvec = np.asarray(marker_rvec).reshape(3)
+                    qxyzw = rvec_to_quaternion_xyzw(marker_rvec)
+                    roll_deg, pitch_deg, yaw_deg = rvec_to_euler_deg(marker_rvec)
 
                     pose = Pose()
-                    pose.position.x = float(txyz[0])
-                    pose.position.y = float(txyz[1])
-                    pose.position.z = float(txyz[2])
+                    pose.position.x = float(marker_txyz[0])
+                    pose.position.y = float(marker_txyz[1])
+                    pose.position.z = float(marker_txyz[2])
                     pose.orientation.x = float(qxyzw[0])
                     pose.orientation.y = float(qxyzw[1])
                     pose.orientation.z = float(qxyzw[2])
@@ -414,9 +461,9 @@ class aruco_camera_test(rx.Node):
                         axis_length_m=max(self._marker_length_m * 0.5, 0.02),
                     )
 
-                    anchor = corners[i][0][0]
+                    anchor = filtered_corners[i][0][0]
                     x_px, y_px = int(anchor[0]), int(anchor[1])
-                    distance_m = float(np.linalg.norm(txyz))
+                    distance_m = float(np.linalg.norm(marker_txyz))
                     lines = [
                         f"ID {int(marker_id)}: {distance_m:.2f} m",
                         f"R/P/Y: {roll_deg:.0f}/{pitch_deg:.0f}/{yaw_deg:.0f} deg",

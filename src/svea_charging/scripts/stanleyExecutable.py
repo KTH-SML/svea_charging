@@ -2,7 +2,7 @@
 
 import numpy as np
 from geometry_msgs.msg import Point
-from geometry_msgs.msg import PoseArray, PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseArray, PoseWithCovarianceStamped, Pose
 from visualization_msgs.msg import Marker
 import time
 
@@ -51,7 +51,7 @@ class stanley_control(rx.Node):
     aruco_pose_is_car_in_marker_frame = rx.Parameter(True)
     aruco_goal_offset = rx.Parameter(0.0)  # stop short of marker center [m]
     aruco_distance_topic = rx.Parameter("aruco/distance_m") # distance to aruco marker, updated by subscriber
-    use_aruco_goal = rx.Parameter(False)
+    use_aruco_goal = rx.Parameter(True)
 
 
     # Interfaces
@@ -60,6 +60,7 @@ class stanley_control(rx.Node):
     goal_tolerance = rx.Parameter(0.2) #m
 
     #Publishers
+    aruco_to_map = rx.Publisher(Pose,'aruco_to_map', qos_pubber)
     goal_pub = rx.Publisher(Marker, 'goal_marker', qos_pubber)
     path_pub = rx.Publisher(Marker, 'path_marker', qos_pubber)
     traj_pub = rx.Publisher(Marker, 'traj_marker', qos_pubber)
@@ -92,32 +93,41 @@ class stanley_control(rx.Node):
 
     @rx.Subscriber(PoseArray, aruco_goal_topic)
     def _aruco_goal_cb(self, msg: PoseArray):
-        if not bool(self.use_aruco_goal):
-            return
+        
         if len(msg.poses) == 0:
             #self.get_logger().warn("No Aruco markers detected, cannot update goal")
             return
 
         pose = msg.poses[0]
-        aruco_x = pose.position.x
-        aruco_y = pose.position.z
-        thetaAruco = pose.orientation.y
-        aruco_x_rel = self.aruco_distance * np.cos(thetaAruco)
-        aruco_y_rel = self.aruco_distance * np.sin(thetaAruco)
+        aruco_position = np.array([
+            pose.position.x,
+            pose.position.y,
+            pose.position.z,
+        ])
+        aruco_orientation = [
+            pose.orientation.x,
+            pose.orientation.y,
+            pose.orientation.z,
+            pose.orientation.w,
+        ]
+        self.transform_to_map_frame(aruco_position, aruco_orientation)
+       # self.get_logger().info(f"x: {aruco_x}, y: {aruco_y}, theta:{thetaAruco}")
+        # aruco_x_rel = self.aruco_distance * np.cos(thetaAruco)
+        # aruco_y_rel = self.aruco_distance * np.sin(thetaAruco)
 
-        state = self.localizer.get_state()
-        x, y, yaw, vel = state
+        # state = self.localizer.get_state()
+        # x, y, yaw, vel = state
 
-        aruco_vec = np.array([aruco_x_rel, aruco_y_rel])
-        car_vec = np.array([x, y])
-        A = np.array([[np.cos(yaw), -np.sin(yaw)],
-                      [np.sin(yaw), np.cos(yaw)]])
-        aruco_in_map = car_vec + A @ aruco_vec
+        # aruco_vec = np.array([aruco_x_rel, aruco_y_rel])
+        # car_vec = np.array([x, y])
+        # A = np.array([[np.cos(yaw), -np.sin(yaw)],
+        #               [np.sin(yaw), np.cos(yaw)]])
+        # aruco_in_map = car_vec + A @ aruco_vec
 
        
-        self.goal = [aruco_in_map[0], aruco_in_map[1]]
-        self.waypoints = self.endPoints
-        self.reached_goal = False
+        # self.goal = [aruco_in_map[0], aruco_in_map[1]]
+        # self.waypoints = self.endPoints
+        # self.reached_goal = False
          
 
     def on_startup(self):
@@ -166,8 +176,6 @@ class stanley_control(rx.Node):
         state = self.localizer.get_state()
         x, y, yaw, vel = state
 
-        if bool(self.use_adaptive_speed):
-            self.controller.target_velocity = self.target_velocity * (self.aruco_distance / 5.0)
 
         dist = self.distance_to_goal(state)
         if dist <= self.goal_tolerance:
@@ -217,6 +225,55 @@ class stanley_control(rx.Node):
         ]
         self.charging_station_identified_mocap = True
         return pointOne, pointTwo
+
+    def transform_to_map_frame(self, aruco_position, aruco_orientation):
+        # Fixed ArUco frame in map: Rz(-90 deg) followed by Rx(+90 deg).
+        A_1_2 = np.array([
+            [0.0, 0.0, -1.0],
+            [-1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0]
+        ])
+        roll, pitch, yaw = euler_from_quaternion(aruco_orientation)
+
+        c_r = np.cos(roll)
+        s_r = np.sin(roll)
+        c_p = np.cos(pitch)
+        s_p = np.sin(pitch)
+        c_y = np.cos(yaw)
+        s_y = np.sin(yaw)
+
+        R_x = np.array([
+            [1.0, 0.0, 0.0],
+            [0.0, c_r, -s_r],
+            [0.0, s_r, c_r],
+        ])
+        R_y = np.array([
+            [c_p, 0.0, s_p],
+            [0.0, 1.0, 0.0],
+            [-s_p, 0.0, c_p],
+        ])
+        R_z = np.array([
+            [c_y, -s_y, 0.0],
+            [s_y, c_y, 0.0],
+            [0.0, 0.0, 1.0],
+        ])
+
+        A_2_3 = R_z @ R_y @ R_x
+
+        d0 = np.array([3.923, 1.367, 0.0])
+        d1 = np.array(aruco_position, dtype=float)
+        d2 = np.array([0.0, 0.0, -0.42])
+
+        A_1_3 = A_1_2 @ A_2_3
+        p0 = d0 + A_1_2 @ d1 + A_1_3 @ d2 
+        #self.get_logger().info((f"x:{aruco_x}, y: {aruco_y}"))
+        #self.get_logger().info((f"x:{p0[0]}, y: {p0[1]}"))
+        skit = Pose()
+        skit.position.x = p0[0]
+        skit.position.y = p0[1]
+        skit.position.z = p0[2]
+        self.aruco_to_map.publish(skit)
+        
 
     def distance_to_goal(self, state):
         x, y, _, _ = state
