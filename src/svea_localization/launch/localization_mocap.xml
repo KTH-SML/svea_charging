@@ -63,10 +63,10 @@
                     <push-ros-namespace namespace="$(var name)"/>
                     
                     <!-- Start LiDAR -->
-                    <include file="$(find-pkg-share svea_localization)/launch/lidar.xml">
+                    <!-- <include file="$(find-pkg-share svea_localization)/launch/lidar.xml">
                         <arg name="lidar_ip"    value="$(var lidar_ip)"/>
                         <arg name="lidar_frame" value="$(var name)/laser"/>
-                    </include>
+                    </include> -->
                 </group>
 
                 <!--mocap localization -->

@@ -77,7 +77,6 @@
                 <param name="dock_distance_m" value="$(var dock_distance_m)"/>
             </node>
 
-            <node name="control_mux" pkg="svea_charging" exec="control_mux.py" output="screen"/>
         </group>
     </group>
 
@@ -117,21 +116,23 @@
             <param name="is_sim" value="$(var is_sim)"/>
             <param name="use_mocap" value="$(var use_mocap)"/>
             <param name="localization/base_frame" value="$(var name)/base_link"/>
-            <param name="steering_top" value="controllers/stanley/steering"/>
+            <!-- <param name="steering_top" value="controllers/stanley/steering"/>
             <param name="throttle_top" value="controllers/stanley/throttle"/>
             <param name="highgear_top" value="controllers/stanley/highgear"/>
-            <param name="diff_top" value="controllers/stanley/diff"/>
+            <param name="diff_top" value="controllers/stanley/diff"/> -->
         </node>
 
+        <!-- Line Follower -->
         <node name="line_follower" pkg="svea_charging" exec="line_follower.py" output="screen">
+            <param name="use_rviz" value="$(var use_foxglove)"/>
             <param name="is_sim" value="$(var is_sim)"/>
             <param name="image_topic" value="$(var camera_image_topic)"/>
-            <param name="steering_top" value="controllers/line_follower/steering"/>
-            <param name="throttle_top" value="controllers/line_follower/throttle"/>
-            <param name="highgear_top" value="controllers/line_follower/highgear"/>
-            <param name="diff_top" value="controllers/line_follower/diff"/>
+            <!-- <param name="steering_top" value="lli/ctrl/steering"/>
+            <param name="throttle_top" value="lli/ctrl/throttle"/>
+            <param name="highgear_top" value="lli/ctrl/highgear"/>
+            <param name="diff_top" value="lli/ctrl/diff"/> -->
         </node>
-
+        
         <node if="$(var use_aruco_camera)" name="aruco_camera_test" pkg="svea_charging" exec="aruco_camera_test.py" output="screen">
             <param name="dictionary" value="$(var aruco_dictionary)"/>
             <param name="camera_index" value="$(var aruco_camera_index)"/>

@@ -23,6 +23,43 @@ qos_pubber = QoSProfile(
     history=QoSHistoryPolicy.KEEP_LAST,
     depth=1,
 )
+
+
+class LineFollowerLocalizationInterface(LocalizationInterface):
+    def _resolve_base_frame(self, odom=None):
+        base_frame = str(self.localization.base_frame)
+        if base_frame and base_frame != "self/base_link":
+            return base_frame
+
+        namespace = self.node.get_namespace().strip("/")
+        if namespace:
+            return f"{namespace}/base_link"
+
+        if odom is not None and odom.child_frame_id:
+            return odom.child_frame_id
+
+        return base_frame
+
+    def transform_odom(
+        self,
+        odom,
+        pose_target=None,
+        twist_target=None,
+        timeout_s=0.2,
+    ):
+        resolved_twist_target = (
+            twist_target
+            if twist_target is not None
+            else self._resolve_base_frame(odom)
+        )
+        return super().transform_odom(
+            odom,
+            pose_target=pose_target,
+            twist_target=resolved_twist_target,
+            timeout_s=timeout_s,
+        )
+
+
 class line_follower(rx.Node):
     dt = rx.Parameter(0.05)
     image_topic = rx.Parameter("/svea67/image_raw")
@@ -68,8 +105,7 @@ class line_follower(rx.Node):
 
     aruco_distance_integral_limit = rx.Parameter(1.0)
 
-    localizer = LocalizationInterface()
-    actuation = ActuationInterface()
+    localizer = LineFollowerLocalizationInterface()
 
     line_error_pub = rx.Publisher(Float32, "line_follower/error_px")
     status_pub = rx.Publisher(String, "line_follower/status")
@@ -82,7 +118,7 @@ class line_follower(rx.Node):
 
     @rx.Subscriber(String, 'mission/active_controller', qos_pubber)
     def _mission_active(self, msg: String):
-        self.active_controller = msg
+        self.active_controller = msg.data
 
     def on_startup(self):
         self.bridge = CvBridge()
@@ -299,6 +335,7 @@ class line_follower(rx.Node):
 
     def loop(self):
         if self.active_controller == 'line_follower':
+            actuation = ActuationInterface()
 
             frame = self.latest_frame
             if frame is None:

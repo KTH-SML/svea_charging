@@ -19,7 +19,7 @@ from svea_charging.third_party.PythonRobotics.PathPlanning.CubicSpline import cu
 
 # Parameters
 k = 3.2 # control gain
-Kp = .9  # speed proportional gain
+Kp = 1.0  # speed proportional gain
 dt = 0.05  # [s] time difference
 L = 0.2  # [m] Wheel base of vehicle (TODO: check this value)
 max_steer = np.radians(50.0)  # [rad] max steering angle (TODO: check this value)

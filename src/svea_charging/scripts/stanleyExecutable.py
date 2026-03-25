@@ -2,7 +2,7 @@
 
 import numpy as np
 from geometry_msgs.msg import Point
-from geometry_msgs.msg import PoseArray, PoseWithCovarianceStamped, Pose
+from geometry_msgs.msg import PoseArray, PoseWithCovarianceStamped
 from visualization_msgs.msg import Marker
 import time
 
@@ -10,7 +10,7 @@ from svea_core.interfaces import LocalizationInterface
 from svea_charging.controllers.stanleyController import StanleyController
 from svea_core.interfaces import ActuationInterface
 from svea_core import rosonic as rx
-from std_msgs.msg import Float32, String
+from std_msgs.msg import Float32
 from tf_transformations import euler_from_quaternion
 from rclpy.qos import (
     QoSProfile,
@@ -51,9 +51,7 @@ class stanley_control(rx.Node):
     aruco_pose_is_car_in_marker_frame = rx.Parameter(True)
     aruco_goal_offset = rx.Parameter(0.0)  # stop short of marker center [m]
     aruco_distance_topic = rx.Parameter("aruco/distance_m") # distance to aruco marker, updated by subscriber
-    use_aruco_goal = rx.Parameter(True)
-
-    active_controller = rx.Parameter('idle')
+    use_aruco_goal = rx.Parameter(False)
 
 
     # Interfaces
@@ -62,7 +60,6 @@ class stanley_control(rx.Node):
     goal_tolerance = rx.Parameter(0.2) #m
 
     #Publishers
-    aruco_to_map = rx.Publisher(Pose,'aruco_to_map', qos_pubber)
     goal_pub = rx.Publisher(Marker, 'goal_marker', qos_pubber)
     path_pub = rx.Publisher(Marker, 'path_marker', qos_pubber)
     traj_pub = rx.Publisher(Marker, 'traj_marker', qos_pubber)
@@ -76,10 +73,6 @@ class stanley_control(rx.Node):
     def _svea67_pose_cb(self, msg: PoseWithCovarianceStamped):
         self.svea_pose = msg
         self.svea_identified_mocap = True
-
-    @rx.Subscriber(String, 'mission/active_controller', qos_pubber)
-    def _mission_active(self, msg: String):
-        self.active_controller = msg
 
     @rx.Subscriber(PoseWithCovarianceStamped, '/mocap/charging_station/pose', qos_pubber)
     def _charging_station_cb(self, msg: PoseWithCovarianceStamped):
@@ -99,33 +92,32 @@ class stanley_control(rx.Node):
 
     @rx.Subscriber(PoseArray, aruco_goal_topic)
     def _aruco_goal_cb(self, msg: PoseArray):
-        
+        if not bool(self.use_aruco_goal):
+            return
         if len(msg.poses) == 0:
             #self.get_logger().warn("No Aruco markers detected, cannot update goal")
             return
 
         pose = msg.poses[0]
         aruco_x = pose.position.x
-        aruco_y = pose.position.y
-        thetaAruco = pose.orientation.z
-        self.transform_to_map_frame(aruco_x,aruco_y,thetaAruco)
-       # self.get_logger().info(f"x: {aruco_x}, y: {aruco_y}, theta:{thetaAruco}")
-        # aruco_x_rel = self.aruco_distance * np.cos(thetaAruco)
-        # aruco_y_rel = self.aruco_distance * np.sin(thetaAruco)
+        aruco_y = pose.position.z
+        thetaAruco = pose.orientation.y
+        aruco_x_rel = self.aruco_distance * np.cos(thetaAruco)
+        aruco_y_rel = self.aruco_distance * np.sin(thetaAruco)
 
-        # state = self.localizer.get_state()
-        # x, y, yaw, vel = state
+        state = self.localizer.get_state()
+        x, y, yaw, vel = state
 
-        # aruco_vec = np.array([aruco_x_rel, aruco_y_rel])
-        # car_vec = np.array([x, y])
-        # A = np.array([[np.cos(yaw), -np.sin(yaw)],
-        #               [np.sin(yaw), np.cos(yaw)]])
-        # aruco_in_map = car_vec + A @ aruco_vec
+        aruco_vec = np.array([aruco_x_rel, aruco_y_rel])
+        car_vec = np.array([x, y])
+        A = np.array([[np.cos(yaw), -np.sin(yaw)],
+                      [np.sin(yaw), np.cos(yaw)]])
+        aruco_in_map = car_vec + A @ aruco_vec
 
        
-        # self.goal = [aruco_in_map[0], aruco_in_map[1]]
-        # self.waypoints = self.endPoints
-        # self.reached_goal = False
+        self.goal = [aruco_in_map[0], aruco_in_map[1]]
+        self.waypoints = self.endPoints
+        self.reached_goal = False
          
 
     def on_startup(self):
@@ -171,37 +163,36 @@ class stanley_control(rx.Node):
         """
         Main loop of the Stanley controller. 
         """
-        if self.active_controller == 'stanley':
-            state = self.localizer.get_state()
-            x, y, yaw, vel = state
+        state = self.localizer.get_state()
+        x, y, yaw, vel = state
 
-            if bool(self.use_adaptive_speed):
-                self.controller.target_velocity = self.target_velocity * (self.aruco_distance / 5.0)
+        if bool(self.use_adaptive_speed):
+            self.controller.target_velocity = self.target_velocity * (self.aruco_distance / 5.0)
 
-            dist = self.distance_to_goal(state)
-            if dist <= self.goal_tolerance:
-                if not self.reached_goal:
-                    self.get_logger().info("Reached goal!")
-                    self.reached_goal = True
-            
+        dist = self.distance_to_goal(state)
+        if dist <= self.goal_tolerance:
             if not self.reached_goal:
-                steering, velocity = self.controller.compute_control(state)
-                # self.get_logger().info(f"Steering: {steering}, Velocity: {velocity}")
-            else:
-                steering, velocity = np.deg2rad(16), 0.0
-                self.velocity = 0.0
+                self.get_logger().info("Reached goal!")
+                self.reached_goal = True
+        
+        if not self.reached_goal:
+            steering, velocity = self.controller.compute_control(state)
+            self.get_logger().info(f"Steering: {steering}, Velocity: {velocity}")
+        else:
+            steering, velocity = np.deg2rad(16), 0.0
+            self.velocity = 0.0
 
-            self.actuation.send_control(steering, velocity)
-            self.publish_errors()
-            self.dist_to_goal.publish(Float32(data=dist))
-            
+        self.actuation.send_control(steering, velocity)
+        self.publish_errors()
+        self.dist_to_goal.publish(Float32(data=dist))
+        
 
-            if self.counter % 10 == 0: # publish markers every 1 seconds
-                self.publish_goal_marker(self.goal)
-                self.publish_waypoints_marker(self.waypoints)
-                self.publish_trajectory_marker(self.controller.cx, self.controller.cy)
-                # Publish errors
-            self.counter += 1
+        if self.counter % 10 == 0: # publish markers every 1 seconds
+            self.publish_goal_marker(self.goal)
+            self.publish_waypoints_marker(self.waypoints)
+            self.publish_trajectory_marker(self.controller.cx, self.controller.cy)
+            # Publish errors
+        self.counter += 1
 
 
     def calculate_points(self):
@@ -226,35 +217,6 @@ class stanley_control(rx.Node):
         ]
         self.charging_station_identified_mocap = True
         return pointOne, pointTwo
-
-    def transform_to_map_frame(self,aruco_x,aruco_y, theta):
-        A_1_2 = np.array([
-    [0.0, -1.0, 0.0],
-    [-1.0, 0.0, 0.0],
-    [0.0, 0.0, -1.0]
-])
-        c = np.cos(theta)
-        s = np.sin(theta)
-
-        A_2_3 = np.array([
-        [ c, 0.0,  s],
-        [0.0, -1.0, 0.0],
-        [-s, 0.0,  c]])
-
-        d0 = np.array([3.63, 1.25, 0.0])
-        d1 = np.array([aruco_x,aruco_y, 0.0])
-        d2 = np.array([0.3,0.0, 0.0])
-
-        A_1_3 = A_1_2 @ A_2_3
-        p0 = d0 + A_1_2 @ d1 + A_1_3 @ d2 
-        #self.get_logger().info((f"x:{aruco_x}, y: {aruco_y}"))
-        #self.get_logger().info((f"x:{p0[0]}, y: {p0[1]}"))
-        skit = Pose()
-        skit.position.x = p0[0]
-        skit.position.y = p0[1]
-        skit.position.z = p0[2]
-        self.aruco_to_map.publish(skit)
-        
 
     def distance_to_goal(self, state):
         x, y, _, _ = state

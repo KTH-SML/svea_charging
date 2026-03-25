@@ -7,11 +7,10 @@ from svea_charging.behaviourTree.behaviourTree import ChargingMissionTree, Missi
 
 
 class mission_manager(rx.Node):
-    tick_hz = rx.Parameter(10.0)
+    tick_hz = rx.Parameter(0.5)
     switch_distance_m = rx.Parameter(4.0)
     dock_distance_m = rx.Parameter(1.6)
 
-    dist_to_station_topic = rx.Parameter("dist_to_goal")
     aruco_distance_topic = rx.Parameter("aruco/distance_m")
     line_status_topic = rx.Parameter("line_follower/status")
 
@@ -25,15 +24,16 @@ class mission_manager(rx.Node):
     tree_status_pub = rx.Publisher(String, tree_status_topic)
     running_node_pub = rx.Publisher(String, running_node_topic)
 
-    @rx.Subscriber(Float32, dist_to_station_topic)
-    def _dist_to_station_cb(self, msg: Float32):
-        self.blackboard.dist_to_station = float(msg.data)
-
     @rx.Subscriber(Float32, aruco_distance_topic)
     def _aruco_distance_cb(self, msg: Float32):
         distance = float(msg.data)
         self.blackboard.aruco_distance = distance
         self.blackboard.charger_visible = distance > 0.0
+        if distance > 0.0:
+            self.blackboard.dist_to_station = distance
+        else:
+            # Lost marker means we should not stay latched in the docking zone.
+            self.blackboard.dist_to_station = None
 
     @rx.Subscriber(String, line_status_topic)
     def _line_status_cb(self, msg: String):
