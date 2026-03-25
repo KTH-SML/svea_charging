@@ -10,7 +10,7 @@ from svea_core.interfaces import LocalizationInterface
 from svea_charging.controllers.stanleyController import StanleyController
 from svea_core.interfaces import ActuationInterface
 from svea_core import rosonic as rx
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, String
 from tf_transformations import euler_from_quaternion
 from rclpy.qos import (
     QoSProfile,
@@ -53,6 +53,8 @@ class stanley_control(rx.Node):
     aruco_distance_topic = rx.Parameter("aruco/distance_m") # distance to aruco marker, updated by subscriber
     use_aruco_goal = rx.Parameter(True)
 
+    active_controller = rx.Parameter('idle')
+
 
     # Interfaces
     actuation = ActuationInterface()
@@ -74,6 +76,10 @@ class stanley_control(rx.Node):
     def _svea67_pose_cb(self, msg: PoseWithCovarianceStamped):
         self.svea_pose = msg
         self.svea_identified_mocap = True
+
+    @rx.Subscriber(String, 'mission/active_controller', qos_pubber)
+    def _mission_active(self, msg: String):
+        self.active_controller = msg
 
     @rx.Subscriber(PoseWithCovarianceStamped, '/mocap/charging_station/pose', qos_pubber)
     def _charging_station_cb(self, msg: PoseWithCovarianceStamped):
@@ -165,36 +171,37 @@ class stanley_control(rx.Node):
         """
         Main loop of the Stanley controller. 
         """
-        state = self.localizer.get_state()
-        x, y, yaw, vel = state
+        if self.active_controller == 'stanley':
+            state = self.localizer.get_state()
+            x, y, yaw, vel = state
 
-        if bool(self.use_adaptive_speed):
-            self.controller.target_velocity = self.target_velocity * (self.aruco_distance / 5.0)
+            if bool(self.use_adaptive_speed):
+                self.controller.target_velocity = self.target_velocity * (self.aruco_distance / 5.0)
 
-        dist = self.distance_to_goal(state)
-        if dist <= self.goal_tolerance:
+            dist = self.distance_to_goal(state)
+            if dist <= self.goal_tolerance:
+                if not self.reached_goal:
+                    self.get_logger().info("Reached goal!")
+                    self.reached_goal = True
+            
             if not self.reached_goal:
-                self.get_logger().info("Reached goal!")
-                self.reached_goal = True
-        
-        if not self.reached_goal:
-            steering, velocity = self.controller.compute_control(state)
-            # self.get_logger().info(f"Steering: {steering}, Velocity: {velocity}")
-        else:
-            steering, velocity = np.deg2rad(16), 0.0
-            self.velocity = 0.0
+                steering, velocity = self.controller.compute_control(state)
+                # self.get_logger().info(f"Steering: {steering}, Velocity: {velocity}")
+            else:
+                steering, velocity = np.deg2rad(16), 0.0
+                self.velocity = 0.0
 
-        self.actuation.send_control(steering, velocity)
-        self.publish_errors()
-        self.dist_to_goal.publish(Float32(data=dist))
-        
+            self.actuation.send_control(steering, velocity)
+            self.publish_errors()
+            self.dist_to_goal.publish(Float32(data=dist))
+            
 
-        if self.counter % 10 == 0: # publish markers every 1 seconds
-            self.publish_goal_marker(self.goal)
-            self.publish_waypoints_marker(self.waypoints)
-            self.publish_trajectory_marker(self.controller.cx, self.controller.cy)
-            # Publish errors
-        self.counter += 1
+            if self.counter % 10 == 0: # publish markers every 1 seconds
+                self.publish_goal_marker(self.goal)
+                self.publish_waypoints_marker(self.waypoints)
+                self.publish_trajectory_marker(self.controller.cx, self.controller.cy)
+                # Publish errors
+            self.counter += 1
 
 
     def calculate_points(self):

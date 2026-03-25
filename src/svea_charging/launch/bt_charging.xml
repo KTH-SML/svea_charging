@@ -90,7 +90,6 @@
             <arg name="map" value="$(var map)"/>
         </include>
 
-        <node name="control_mux" pkg="svea_charging" exec="control_mux.py" output="screen"/>
         <push-ros-namespace namespace="$(var name)"/>
 
         <node name="usb_cam_node" pkg="usb_cam" exec="usb_cam_node_exe" output="screen">

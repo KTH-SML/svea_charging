@@ -9,14 +9,28 @@ from std_msgs.msg import Float32, String
 
 from svea_core import rosonic as rx
 from svea_core.interfaces import ActuationInterface, LocalizationInterface
+from rclpy.qos import (
+    QoSProfile,
+    QoSReliabilityPolicy,
+    QoSDurabilityPolicy,
+    QoSHistoryPolicy,
+)
 
-
+#QoS Profile
+qos_pubber = QoSProfile(
+    reliability=QoSReliabilityPolicy.RELIABLE,
+    durability=QoSDurabilityPolicy.VOLATILE,
+    history=QoSHistoryPolicy.KEEP_LAST,
+    depth=1,
+)
 class line_follower(rx.Node):
     dt = rx.Parameter(0.05)
     image_topic = rx.Parameter("/svea67/image_raw")
     target_velocity = rx.Parameter(0.4)
     max_velocity = rx.Parameter(0.7)
     stop_on_lost_line = rx.Parameter(True)
+    active_controller = rx.Parameter('idle')
+
 
     publish_debug_image = rx.Parameter(False)
     debug_image_topic = rx.Parameter("line_follower/debug_image")
@@ -65,6 +79,10 @@ class line_follower(rx.Node):
     @rx.Subscriber(Float32, aruco_distance_topic)
     def _aruco_distance_callback(self, msg: Float32):
         self.aruco_distance = float(msg.data)
+
+    @rx.Subscriber(String, 'mission/active_controller', qos_pubber)
+    def _mission_active(self, msg: String):
+        self.active_controller = msg
 
     def on_startup(self):
         self.bridge = CvBridge()
@@ -280,41 +298,43 @@ class line_follower(rx.Node):
         return velocity
 
     def loop(self):
-        frame = self.latest_frame
-        if frame is None:
-            return
+        if self.active_controller == 'line_follower':
 
-        _, width = frame.shape[:2]
-        image_center_x = width / 2.0
+            frame = self.latest_frame
+            if frame is None:
+                return
 
-        if self.latest_centroid is None:
-            self._publish_status("line_lost")
-            self.steering_error_prev = 0.0
-            self.steering_error_integral = 0.0
-            if bool(self.stop_on_lost_line):
-                self.actuation.send_control(float(self.lost_line_steering_rad), 0.0)
-            self._publish_debug_image(frame, None, None)
-            return
+            _, width = frame.shape[:2]
+            image_center_x = width / 2.0
 
-        cx, cy = self.latest_centroid
-        error_px = cx - image_center_x
-        normalized_error = error_px / max(image_center_x, 1.0)
+            if self.latest_centroid is None:
+                self._publish_status("line_lost")
+                self.steering_error_prev = 0.0
+                self.steering_error_integral = 0.0
+                if bool(self.stop_on_lost_line):
+                    self.actuation.send_control(float(self.lost_line_steering_rad), 0.0)
+                self._publish_debug_image(frame, None, None)
+                return
 
-        dt = self.dt_s
-        steering = self._calculate_steering(normalized_error, dt)
-        velocity = self._calculate_velocity(normalized_error, dt)
+            cx, cy = self.latest_centroid
+            error_px = cx - image_center_x
+            normalized_error = error_px / max(image_center_x, 1.0)
 
-        self.actuation.send_control(steering, velocity)
-        self.line_error_pub.publish(Float32(data=float(error_px)))
-        self._publish_status(self._get_status_text(velocity))
+            dt = self.dt_s
+            steering = self._calculate_steering(normalized_error, dt)
+            velocity = self._calculate_velocity(normalized_error, dt)
 
-        centroid_msg = Point()
-        centroid_msg.x = float(cx)
-        centroid_msg.y = float(cy)
-        centroid_msg.z = 0.0
-        self.centroid_pub.publish(centroid_msg)
+            self.actuation.send_control(steering, velocity)
+            self.line_error_pub.publish(Float32(data=float(error_px)))
+            self._publish_status(self._get_status_text(velocity))
 
-        self._publish_debug_image(frame, (cx, cy), error_px)
+            centroid_msg = Point()
+            centroid_msg.x = float(cx)
+            centroid_msg.y = float(cy)
+            centroid_msg.z = 0.0
+            self.centroid_pub.publish(centroid_msg)
+
+            self._publish_debug_image(frame, (cx, cy), error_px)
 
 
     def _publish_status(self, text: str):

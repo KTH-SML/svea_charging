@@ -8,8 +8,8 @@ from svea_charging.behaviourTree.behaviourTree import ChargingMissionTree, Missi
 
 class mission_manager(rx.Node):
     tick_hz = rx.Parameter(10.0)
-    switch_distance_m = rx.Parameter(1.5)
-    dock_distance_m = rx.Parameter(0.35)
+    switch_distance_m = rx.Parameter(4.0)
+    dock_distance_m = rx.Parameter(1.6)
 
     dist_to_station_topic = rx.Parameter("dist_to_goal")
     aruco_distance_topic = rx.Parameter("aruco/distance_m")
