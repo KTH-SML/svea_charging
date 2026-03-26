@@ -39,7 +39,7 @@ class stanley_control(rx.Node):
 
 
     endPoint = rx.Parameter('[1.891350, 1.363510]') #x= -1.885,y=  1.348, yaw = 90deg alt x = 1.6
-    endPoints = rx.Parameter('[0.9, 1.3659], [1.6, 1.363510], [1.891350, 1.363510]')
+    endPoints = rx.Parameter('[-0.1, 1.363510], [1.6, 1.363510], [1.891350, 1.363510]')
 
     target_velocity = rx.Parameter(0.5)
     controller_name = rx.Parameter("stanley")
@@ -161,7 +161,7 @@ class stanley_control(rx.Node):
         if dist <= self.goal_tolerance:
             if not self.reached_goal:
                 self.get_logger().info("Reached goal!")
-                self.reached_goal = True
+                self.reached_goal = False # for the line follower implementation
         
         if not self.reached_goal:
             steering, velocity = self.controller.compute_control(state)
