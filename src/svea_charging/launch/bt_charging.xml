@@ -2,8 +2,8 @@
 <launch>
 
     <arg name="map" default="sml"/>
-    <arg name="is_sim" default="true"/>
-    <arg name="use_mocap" default="false"/>
+    <arg name="is_sim" default="false"/>
+    <arg name="use_mocap" default="true"/>
     <arg name="use_foxglove" default="true"/>
     <arg name="initial_pose_x" default="-2.5"/>
     <arg name="initial_pose_y" default="0.0"/>
@@ -27,8 +27,8 @@
     <arg name="aruco_calibration_file" default="/svea_ws/src/svea_charging/params/camera.yaml"/>
     <arg name="aruco_focal_length_px" default="-1.0"/>
 
-    <arg name="bt_switch_distance_m" default="2.8"/>
-    <arg name="bt_dock_distance_m" default="1.6"/>
+    <arg name="bt_switch_distance_m" default="3.15"/>
+    <arg name="bt_dock_distance_m" default="1.63"/>
 
     <include file="$(find-pkg-share svea_core)/launch/map_and_foxglove.xml">
         <arg name="map" value="$(var map)" />

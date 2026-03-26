@@ -13,6 +13,8 @@ from svea_charging.third_party.btree.btree import (
 @dataclass
 class MissionBlackboard:
     battery_level: float = 20.0
+    battery_current: float = -1.0
+    battery_voltage: float = 12.0
     communication_ok: bool = True
     charger_visible: bool = False
     line_visible: bool = False
@@ -99,7 +101,7 @@ class ChargingMissionTree:
         aruco_distance = self.bb.aruco_distance
         if aruco_distance is None:
             return NodeStatus.FAILURE
-        if aruco_distance <= self.bb.dock_distance_m:
+        if self.bb.battery_current > -0.5:
             self.bb.active_controller = "idle"
             self.bb.mission_phase = "docked"
             return NodeStatus.SUCCESS

@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 
 from std_msgs.msg import Float32, String
+from sensor_msgs.msg import BatteryState
 
 from rclpy.qos import (
     QoSDurabilityPolicy,
     QoSHistoryPolicy,
     QoSProfile,
     QoSReliabilityPolicy,
+)
+battery_qos = QoSProfile(
+    reliability=QoSReliabilityPolicy.BEST_EFFORT,
+    durability=QoSDurabilityPolicy.VOLATILE,
+    history=QoSHistoryPolicy.KEEP_LAST,
+    depth=1,
 )
 
 from svea_core import rosonic as rx
@@ -23,12 +30,13 @@ qos_pubber = QoSProfile(
 
 class bt_runner(rx.Node):
     tick_hz = rx.Parameter(10.0)
-    switch_distance_m = rx.Parameter(3.0)
+    switch_distance_m = rx.Parameter(3.8)
     dock_distance_m = rx.Parameter(1.6)
 
     dist_to_goal_topic = rx.Parameter("dist_to_goal")
     aruco_distance_topic = rx.Parameter("aruco/distance_m")
     line_status_topic = rx.Parameter("line_follower/status")
+    battery_charging_topic = rx.Parameter("/lli/battery/state")
 
     active_controller_pub = rx.Publisher(String, "mission/active_controller", qos_pubber)
     phase_pub = rx.Publisher(String, "mission/phase", qos_pubber)
@@ -52,6 +60,13 @@ class bt_runner(rx.Node):
     def _line_status_cb(self, msg: String):
         status = msg.data
         self.bb.line_visible = status not in {"line_lost", "idle"}
+
+    @rx.Subscriber(BatteryState, battery_charging_topic, battery_qos)
+    def _battery_charging_cb(self, msg: BatteryState):
+        self.bb.battery_current = float(msg.current)
+        self.bb.battery_voltage = float(msg.voltage)
+        self.bb.battery_level = float(msg.percentage) * 100
+        # self.get_logger().info(f'battery current: {self.bb.battery_current}')
 
     def on_startup(self):
         self.bb = MissionBlackboard(
