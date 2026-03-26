@@ -20,8 +20,8 @@ class MissionBlackboard:
     charging_error: bool = False
     dist_to_station: float | None = None
     aruco_distance: float | None = None
-    switch_distance_m: float = 1.5
-    dock_distance_m: float = 0.35
+    switch_distance_m: float = 2.8
+    dock_distance_m: float = 1.6
     active_controller: str = "stanley"
     mission_phase: str = "approach"
     last_tree_status: str = NodeStatus.RUNNING
@@ -39,7 +39,7 @@ class ChargingMissionTree:
     - simple docking completion
     - communication guard
     """
-
+   
     def __init__(self, blackboard: MissionBlackboard):
         self.bb = blackboard
         self.tree = Sequence(
@@ -80,10 +80,12 @@ class ChargingMissionTree:
         return NodeStatus.FAILURE
 
     def is_near_docking_zone(self) -> str:
-        distance = self.bb.dist_to_station
+        
+        distance = self.bb.aruco_distance
         if distance is None:
             return NodeStatus.FAILURE
         if distance <= self.bb.switch_distance_m:
+            
             self.bb.mission_phase = "docking"
             return NodeStatus.SUCCESS
         return NodeStatus.FAILURE
