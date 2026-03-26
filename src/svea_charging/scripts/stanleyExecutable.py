@@ -165,7 +165,7 @@ class stanley_control(rx.Node):
         
         if not self.reached_goal:
             steering, velocity = self.controller.compute_control(state)
-            self.get_logger().info(f"Steering: {steering}, Velocity: {velocity}")
+            # self.get_logger().info(f"Steering: {steering}, Velocity: {velocity}")
         else:
             steering, velocity = np.deg2rad(16), 0.0
             self.velocity = 0.0

@@ -23,7 +23,7 @@ qos_pubber = QoSProfile(
 
 class bt_runner(rx.Node):
     tick_hz = rx.Parameter(10.0)
-    switch_distance_m = rx.Parameter(4.0)
+    switch_distance_m = rx.Parameter(3.0)
     dock_distance_m = rx.Parameter(1.6)
 
     dist_to_goal_topic = rx.Parameter("dist_to_goal")
@@ -59,7 +59,7 @@ class bt_runner(rx.Node):
             dock_distance_m=float(self.dock_distance_m),
         )
         self.tree = ChargingMissionTree(self.bb)
-        period = 1.0 / max(float(self.tick_hz), 1.0)
+        period = 1.0 / self.tick_hz
         self.create_timer(period, self.loop)
         self.get_logger().info(
             "BT runner started "
