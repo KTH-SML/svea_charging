@@ -61,9 +61,20 @@ class control_mux(rx.Node):
         self.line_cmd.velocity = float(msg.data)
         self.line_cmd.stamp_s = self._now_s()
 
+    @rx.Subscriber(Float32, "mpc/cmd_steering_rad", qos_pubber)
+    def _mpc_steering_cb(self, msg: Float32):
+        self.mpc_cmd.steering = float(msg.data)
+        self.mpc_cmd.stamp_s = self._now_s()
+
+    @rx.Subscriber(Float32, "mpc/cmd_velocity_mps", qos_pubber)
+    def _mpc_velocity_cb(self, msg: Float32):
+        self.mpc_cmd.velocity = float(msg.data)
+        self.mpc_cmd.stamp_s = self._now_s()
+
     def on_startup(self):
         self.stanley_cmd = ControllerCommand()
         self.line_cmd = ControllerCommand()
+        self.mpc_cmd = ControllerCommand()
         period = 1.0 / max(float(self.output_hz), 1.0)
         self.create_timer(period, self.loop)
         self.get_logger().info("Control mux started")
@@ -76,6 +87,8 @@ class control_mux(rx.Node):
         active = str(self.active_controller)
         if active == "stanley":
             return self._validated_command(self.stanley_cmd)
+        if active == "mpc":
+            return self._validated_command(self.mpc_cmd)
         if active == "line_follower":
             return self._validated_command(self.line_cmd)
         return ControllerCommand()

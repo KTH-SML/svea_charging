@@ -18,8 +18,8 @@ sys.path.append(str(pathlib.Path(__file__).parent.parent.parent))
 from svea_charging.third_party.PythonRobotics.PathPlanning.CubicSpline import cubic_spline_planner
 
 # Parameters
-k = 3.0 # control gain
-Kp = 0.5  # speed proportional gain
+k = 2.5 # control gain
+Kp = .5  # speed proportional gain
 dt = 0.05  # [s] time difference
 L = 0.2  # [m] Wheel base of vehicle (TODO: check this value)
 max_steer = np.radians(50.0)  # [rad] max steering angle (TODO: check this value)
@@ -93,7 +93,7 @@ class StanleyController:
         self.error_derivative = error_d
 
         self.error_integral += error_i
-        self.error_integral = np.clip(self.error_integral, -self.target_velocity*1.5, self.target_velocity*1.5)  # Anti-windup
+        self.error_integral = np.clip(self.error_integral, -self.target_velocity*2.0, self.target_velocity*2.0)  # Anti-windup
 
         self.error_prev = error
 
