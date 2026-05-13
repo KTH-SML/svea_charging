@@ -63,7 +63,7 @@ class LineFollowerLocalizationInterface(LocalizationInterface):
 class line_follower(rx.Node):
     dt = rx.Parameter(0.05)
     image_topic = rx.Parameter("/svea67/image_raw")
-    target_velocity = rx.Parameter(0.4)
+    target_velocity = rx.Parameter(0.25)
     max_velocity = rx.Parameter(0.7)
     stop_on_lost_line = rx.Parameter(True)
     controller_name = rx.Parameter("line_follower")
@@ -72,7 +72,7 @@ class line_follower(rx.Node):
     velocity_cmd_topic = rx.Parameter("line_follower/cmd_velocity_mps")
 
 
-    publish_debug_image = rx.Parameter(False)
+    publish_debug_image = rx.Parameter(True)
     debug_image_topic = rx.Parameter("line_follower/debug_image")
     debug_publish_every_n = rx.Parameter(3)
 
@@ -86,32 +86,33 @@ class line_follower(rx.Node):
 
     crop_start_ratio = rx.Parameter(0.55)
     min_contour_area = rx.Parameter(120)
-    steering_kp = rx.Parameter(1.6)
+    steering_kp = rx.Parameter(1.8)
     steering_ki = rx.Parameter(.3)
     steering_kd = rx.Parameter(0.01)
     steering_limit_rad = rx.Parameter(0.6)
     lost_line_steering_rad = rx.Parameter(0.0)
-    velocity_scale_from_error = rx.Parameter(True)
+    velocity_scale_from_error = rx.Parameter(False)
 
     use_aruco_stop = rx.Parameter(True)
     aruco_distance_topic = rx.Parameter("aruco/distance_m")
-    aruco_stop_distance_m = rx.Parameter(1.68)
-    aruco_distance_kp = rx.Parameter(10.0)
-    aruco_distance_ki = rx.Parameter(0.15)
-    aruco_distance_kd = rx.Parameter(0.0)
-    aruco_distance_integral_limit = rx.Parameter(1.0)
-    aruco_velocity_kp = rx.Parameter(10.0)
-    aruco_velocity_ki = rx.Parameter(0.3)
+    aruco_stop_distance_m = rx.Parameter(1.6)
+    aruco_distance_kp = rx.Parameter(.7)
+    aruco_distance_ki = rx.Parameter(0.0)
+    aruco_distance_kd = rx.Parameter(0.01)
+    aruco_velocity_kp = rx.Parameter(.5)
+    aruco_velocity_ki = rx.Parameter(0.1)
     aruco_velocity_kd = rx.Parameter(0.0)
-    aruco_max_backup_velocity = rx.Parameter(0.35)
+    aruco_max_backup_velocity = rx.Parameter(0.25)
     aruco_overshoot_deadband_m = rx.Parameter(0.03)
 
-    aruco_distance_integral_limit = rx.Parameter(5.0)
+    aruco_distance_integral_limit = rx.Parameter(2.0)
 
     localizer = LineFollowerLocalizationInterface()
 
     steering_cmd_pub = rx.Publisher(Float32, steering_cmd_topic)
     velocity_cmd_pub = rx.Publisher(Float32, velocity_cmd_topic)
+    distance_cmd_pub = rx.Publisher(Float32, "distance_cmd_topic")
+
     line_error_pub = rx.Publisher(Float32, "line_follower/error_px")
     status_pub = rx.Publisher(String, "line_follower/status")
     centroid_pub = rx.Publisher(Point, "line_follower/centroid")
@@ -139,7 +140,7 @@ class line_follower(rx.Node):
 
         self.aruco_distance_error_prev = 0.0
         self.aruco_distance_integral = 0.0
-        self.aruco_velocity_integral = 0.0
+        self.aruco_velocity_integral = 2
         self.aruco_velocity_error_prev = 0.0
         self.position_prev = 0.0
 
@@ -230,7 +231,7 @@ class line_follower(rx.Node):
                 float(self.steering_limit_rad),
             )
         )
-        return steering
+        return steering + np.deg2rad(16.0)
 
     def _calculate_velocity(self, normalized_error, dt):
         # Base velocity from line following
@@ -304,6 +305,14 @@ class line_follower(rx.Node):
                 base_velocity,
             )
         )
+        desired_velocity = max(desired_velocity, 0.1) #if lower than 0.1 the velocity controller takes to much time
+        if self.aruco_distance <= self.aruco_stop_distance_m:
+            desired_velocity = -.22
+            self.aruco_velocity_kp = 2.0
+        else:
+                self.aruco_velocity_kp = 0.5
+
+        self.distance_cmd_pub.publish(Float32(data=float(desired_velocity)))
 
         _, _, _, vel = self.localizer.get_state()
         vel_error = desired_velocity - vel
@@ -329,13 +338,15 @@ class line_follower(rx.Node):
         self.aruco_velocity_error_prev = float(vel_error)
         self.position_prev = float(dist_error)
 
-        velocity = float(
-            np.clip(
-                velocity,
-                -backup_velocity_limit,
-                base_velocity,
-            )
-        )
+        # velocity = float(
+        #     np.clip(
+        #         velocity,
+        #         -backup_velocity_limit,
+        #         base_velocity,
+        #     )
+        # )
+
+
         return velocity
 
     def loop(self):
