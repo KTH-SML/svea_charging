@@ -71,9 +71,7 @@
                 </group>
 
                 <!--mocap localization -->
-                <include file="$(find-pkg-share mocap_qualisys)/launch/qualisys.launch.py">
-                    <arg name="server_address" value="$(var mocap_server_address)"/>
-                </include>
+                <include file="$(find-pkg-share mocap_qualisys)/launch/qualisys.launch.py"/>
                 
                 <node pkg="svea_mocap" exec="mocap_msg_filter.py" name="mocap_msg_filter" output="screen"/>
                 
