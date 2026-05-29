@@ -36,16 +36,8 @@ class bt_runner(rx.Node):
     tick_hz = rx.Parameter(20.0)
     switch_distance_m = rx.Parameter(2.5)
     dock_distance_m = rx.Parameter(1.6)
-    mpc_target_topic = rx.Parameter("/mpc_target")
-    mpc_target_frame = rx.Parameter("map")
-    
-    mpc_target_yaw = rx.Parameter(0.0)
-    goal_x = rx.Parameter(1.8808068847589485)
-    goal_y = rx.Parameter(1.345089355475518)
-    mpc_target_x = 1.86
-    mpc_target_y = goal_y
-   
-    docking_timeout_sec = rx.Parameter(500.0)
+    charge_done_level = rx.Parameter(95.0)
+    charge_demo_duration_s = rx.Parameter(10.0)
 
     dist_to_goal_topic = rx.Parameter("dist_to_goal")
     aruco_distance_topic = rx.Parameter("aruco/distance_m")
@@ -75,7 +67,8 @@ class bt_runner(rx.Node):
     def _battery_charging_cb(self, msg: BatteryState):
         self.bb.battery_current = float(msg.current)
         self.bb.battery_voltage = float(msg.voltage)
-        self.bb.battery_level = float(msg.percentage) * 100
+        if not self.bb.charge_demo_complete:
+            self.bb.battery_level = float(msg.percentage) * 100
         # self.get_logger().info(f'battery current: {self.bb.battery_current}')
 
     @rx.Subscriber(PoseWithCovarianceStamped, '/mocap/svea/pose')
@@ -99,6 +92,8 @@ class bt_runner(rx.Node):
         self.bb = MissionBlackboard(
             switch_distance_m=float(self.switch_distance_m),
             dock_distance_m=float(self.dock_distance_m),
+            charge_done_level=float(self.charge_done_level),
+            charge_demo_duration_s=float(self.charge_demo_duration_s),
         )
         self.tree = ChargingMissionTree(self.bb)
         self.last_active_controller = str(self.bb.active_controller)
@@ -117,7 +112,8 @@ class bt_runner(rx.Node):
         self.get_logger().info(
             "BT runner started "
             f"(switch={self.bb.switch_distance_m:.2f} m, dock={self.bb.dock_distance_m:.2f} m, "
-            f"docking timeout={self.docking_timeout_sec:.1f}s, goal=({self.goal_x:.2f}, {self.goal_y:.2f}))"
+            f"charge_demo={self.bb.charge_demo_duration_s:.1f} s, "
+            f"charge_done={self.bb.charge_done_level:.1f}%)"
         )
 
     def loop(self):
