@@ -75,7 +75,8 @@ class bt_runner(rx.Node):
     def _battery_charging_cb(self, msg: BatteryState):
         self.bb.battery_current = float(msg.current)
         self.bb.battery_voltage = float(msg.voltage)
-        self.bb.battery_level = float(msg.percentage) * 100
+        if not self.bb.charge_demo_complete:
+            self.bb.battery_level = float(msg.percentage) * 100
         # self.get_logger().info(f'battery current: {self.bb.battery_current}')
 
     @rx.Subscriber(PoseWithCovarianceStamped, '/mocap/svea/pose')
@@ -99,6 +100,8 @@ class bt_runner(rx.Node):
         self.bb = MissionBlackboard(
             switch_distance_m=float(self.switch_distance_m),
             dock_distance_m=float(self.dock_distance_m),
+            charge_done_level=float(self.charge_done_level),
+            charge_demo_duration_s=float(self.charge_demo_duration_s),
         )
         self.tree = ChargingMissionTree(self.bb)
         self.last_active_controller = str(self.bb.active_controller)
