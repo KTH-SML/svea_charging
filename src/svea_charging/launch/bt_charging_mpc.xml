@@ -101,6 +101,9 @@
     <group unless="$(var is_sim)">
         <let name="name" value="svea67"/>
 
+        <!-- Low-Level Interface -->
+        <!-- <executable cmd="$(find-pkg-share svea_core)/util/start_charging_arm.sh" output="screen"/> -->
+
         <include file="$(find-pkg-share svea_core)/launch/svea_mocap.xml">
             <arg name="name" value="$(var name)" />
             <arg name="is_sim" value="$(var is_sim)" />
