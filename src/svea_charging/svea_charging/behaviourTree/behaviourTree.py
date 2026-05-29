@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import rosonic as rx
+from std_msgs.msg import Bool
+
 import time
 from dataclasses import dataclass
 
@@ -9,6 +12,8 @@ from svea_charging.third_party.btree.btree import (
     NodeStatus,
     Sequence,
 )
+
+charging_arm_pub = rx.Publisher(Bool, charging_arm)
 
 
 @dataclass
