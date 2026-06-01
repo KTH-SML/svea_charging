@@ -32,12 +32,14 @@ qos_pubber = QoSProfile(
 )
 
 
+
 class bt_runner(rx.Node):
     tick_hz = rx.Parameter(20.0)
     switch_distance_m = rx.Parameter(2.5)
     dock_distance_m = rx.Parameter(1.6)
     charge_done_level = rx.Parameter(95.0)
     charge_demo_duration_s = rx.Parameter(10.0)
+    charging_arm_topic = rx.Parameter("/charging_arm")
 
     dist_to_goal_topic = rx.Parameter("dist_to_goal")
     aruco_distance_topic = rx.Parameter("aruco/distance_m")
@@ -47,7 +49,7 @@ class bt_runner(rx.Node):
     active_controller_pub = rx.Publisher(String, "mission/active_controller", qos_pubber)
     phase_pub = rx.Publisher(String, "mission/phase", qos_pubber)
     tree_status_pub = rx.Publisher(String, "mission/tree_status", qos_pubber)
-    mpc_target_pub = rx.Publisher(PoseStamped, mpc_target_topic, qos_pubber)
+    charging_arm_pub = rx.Publisher(Bool, charging_arm_topic, qos_pubber)
 
     @rx.Subscriber(Float32, dist_to_goal_topic)
     def _dist_to_goal_cb(self, msg: Float32):
@@ -115,6 +117,9 @@ class bt_runner(rx.Node):
             f"charge_demo={self.bb.charge_demo_duration_s:.1f} s, "
             f"charge_done={self.bb.charge_done_level:.1f}%)"
         )
+
+    def _set_charging_arm(self, enabled: bool):
+        self.charging_arm_pub.publish(Bool(data=enabled))
 
     def loop(self):
         status = self.tree.tick()

@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import rosonic as rx
-from std_msgs.msg import Bool
-
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from svea_charging.third_party.btree.btree import (
@@ -13,7 +11,6 @@ from svea_charging.third_party.btree.btree import (
     Sequence,
 )
 
-charging_arm_pub = rx.Publisher(Bool, charging_arm)
 
 
 @dataclass
@@ -51,9 +48,13 @@ class ChargingMissionTree:
     - charge completion wait
     - communication guard
     """
-
-    def __init__(self, blackboard: MissionBlackboard):
+    def __init__(
+        self,
+        blackboard: MissionBlackboard,
+        set_charging_arm: Callable[[bool], None],
+    ):
         self.bb = blackboard
+        self.set_charging_arm = set_charging_arm
         approach_phase = Fallback(
             ActionNode(self.is_near_docking_zone, "is_near_docking_zone"),
             ActionNode(self.run_stanley_approach, "run_stanley_approach"),
@@ -136,7 +137,9 @@ class ChargingMissionTree:
         self.bb.active_controller = "mpc"
         self.bb.mission_phase = "docking"
 
-        if self.bb.charger_visible:
+        if self.bb.charger_visible and self.bb.line_visible:
+            if self.bb.aruco_distance is not None and self.bb.aruco_distance <= 2.0:
+                self.set_charging_arm(True)
             return NodeStatus.RUNNING
 
         return NodeStatus.FAILURE
@@ -188,6 +191,7 @@ class ChargingMissionTree:
         return NodeStatus.RUNNING
 
     def exit_station(self) -> str:
+        self.set_charging_arm(False)
         self.bb.active_controller = "stanley"
         self.bb.mission_phase = "exit_station"
         self.bb.charge_started_at = None
