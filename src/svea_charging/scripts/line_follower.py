@@ -63,8 +63,8 @@ class LineFollowerLocalizationInterface(LocalizationInterface):
 class line_follower(rx.Node):
     dt = rx.Parameter(0.05)
     image_topic = rx.Parameter("/svea67/image_raw")
-    target_velocity = rx.Parameter(0.25)
-    max_velocity = rx.Parameter(0.7)
+    target_velocity = rx.Parameter(0.30)
+    max_velocity = rx.Parameter(0.45)
     stop_on_lost_line = rx.Parameter(True)
     controller_name = rx.Parameter("line_follower")
     active_controller = rx.Parameter('idle')
@@ -86,8 +86,8 @@ class line_follower(rx.Node):
 
     crop_start_ratio = rx.Parameter(0.55)
     min_contour_area = rx.Parameter(120)
-    steering_kp = rx.Parameter(1.8)
-    steering_ki = rx.Parameter(.3)
+    steering_kp = rx.Parameter(1.3)
+    steering_ki = rx.Parameter(.2)
     steering_kd = rx.Parameter(0.01)
     steering_limit_rad = rx.Parameter(0.6)
     lost_line_steering_rad = rx.Parameter(0.0)

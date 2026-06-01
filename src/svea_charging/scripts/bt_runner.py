@@ -32,20 +32,14 @@ qos_pubber = QoSProfile(
 )
 
 
+
 class bt_runner(rx.Node):
     tick_hz = rx.Parameter(20.0)
-    switch_distance_m = rx.Parameter(2.5)
+    switch_distance_m = rx.Parameter(3.8)
     dock_distance_m = rx.Parameter(1.6)
-    mpc_target_topic = rx.Parameter("/mpc_target")
-    mpc_target_frame = rx.Parameter("map")
-    
-    mpc_target_yaw = rx.Parameter(0.0)
-    goal_x = rx.Parameter(1.8808068847589485)
-    goal_y = rx.Parameter(1.345089355475518)
-    mpc_target_x = 1.86
-    mpc_target_y = goal_y
-   
-    docking_timeout_sec = rx.Parameter(500.0)
+    charge_done_level = rx.Parameter(95.0)
+    charge_demo_duration_s = rx.Parameter(10.0)
+    charging_arm_topic = rx.Parameter("/charging_arm")
 
     dist_to_goal_topic = rx.Parameter("dist_to_goal")
     aruco_distance_topic = rx.Parameter("aruco/distance_m")
@@ -55,7 +49,7 @@ class bt_runner(rx.Node):
     active_controller_pub = rx.Publisher(String, "mission/active_controller", qos_pubber)
     phase_pub = rx.Publisher(String, "mission/phase", qos_pubber)
     tree_status_pub = rx.Publisher(String, "mission/tree_status", qos_pubber)
-    mpc_target_pub = rx.Publisher(PoseStamped, mpc_target_topic, qos_pubber)
+    charging_arm_pub = rx.Publisher(Bool, charging_arm_topic, qos_pubber)
 
     @rx.Subscriber(Float32, dist_to_goal_topic)
     def _dist_to_goal_cb(self, msg: Float32):
@@ -115,6 +109,7 @@ class bt_runner(rx.Node):
         self.goal_y = float(self.goal_y)
         self.docking_timeout_sec = float(self.docking_timeout_sec)
         
+        self.tree = ChargingMissionTree(self.bb, self._set_charging_arm)
         period = 1.0 / self.tick_hz
         self.create_timer(period, self.loop)
         self.get_logger().info(
@@ -122,6 +117,9 @@ class bt_runner(rx.Node):
             f"(switch={self.bb.switch_distance_m:.2f} m, dock={self.bb.dock_distance_m:.2f} m, "
             f"docking timeout={self.docking_timeout_sec:.1f}s, goal=({self.goal_x:.2f}, {self.goal_y:.2f}))"
         )
+
+    def _set_charging_arm(self, enabled: bool):
+        self.charging_arm_pub.publish(Bool(data=enabled))
 
     def loop(self):
         status = self.tree.tick()
