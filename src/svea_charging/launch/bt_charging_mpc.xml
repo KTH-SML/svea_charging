@@ -1,14 +1,15 @@
 <?xml version="1.0"?>
 <launch>
+    <!-- Core charging launch.
+         This file starts only the charging-specific nodes. It expects robot
+         bringup, localization, map, camera driver, and visualization to be
+         provided by the including launch file or another package. -->
 
-    <arg name="map" default="sml"/>
+    <arg name="name" default="svea67"/>
     <arg name="is_sim" default="false"/>
-    <arg name="use_mocap" default="true"/>
+    <arg name="use_mocap" default="false"/>
     <arg name="use_foxglove" default="true"/>
-    <arg name="initial_pose_x" default="-2.5"/>
-    <arg name="initial_pose_y" default="0.0"/>
-    <arg name="initial_pose_a" default="0.0"/>
-    <arg name="state" default="[-7.4, -15.3, 0.9, 0.0]"/>
+    <arg name="base_frame" default="$(var name)/base_link"/>
 
     <arg name="use_aruco_camera" default="true"/>
     <arg name="mocap_server_address" default="10.0.0.10"/>
@@ -25,31 +26,15 @@
     <arg name="aruco_marker_id" default="13"/>
     <arg name="aruco_marker_size_px" default="400"/>
     <arg name="aruco_output" default="aruco_marker.png"/>
-    <arg name="aruco_calibration_file" default="/svea_ws/src/svea_charging/params/camera.yaml"/>
+    <arg name="aruco_calibration_file" default="$(find-pkg-share svea_charging)/params/camera.yaml"/>
     <arg name="aruco_focal_length_px" default="-1.0"/>
     <arg name="svea_mocap_name" default="svea67"/> 
 
     <arg name="bt_switch_distance_m" default="2.5"/>
     <arg name="bt_dock_distance_m" default="1.63"/>
 
-    <include file="$(find-pkg-share svea_core)/launch/map_and_foxglove.xml">
-        <arg name="map" value="$(var map)" />
-        <arg name="use_foxglove" value="$(var use_foxglove)" />
-    </include>
-
-    <group if="$(var is_sim)">
-        <let name="name" value="self"/>
+    <group>
         <push-ros-namespace namespace="$(var name)"/>
-
-        <include file="$(find-pkg-share svea_core)/launch/svea.xml">
-            <arg name="name" value="$(var name)" />
-            <arg name="is_sim" value="$(var is_sim)" />
-            <arg name="map" value="$(var map)" />
-            <arg name="initial_pose_x" value="$(var initial_pose_x)" />
-            <arg name="initial_pose_y" value="$(var initial_pose_y)" />
-            <arg name="initial_pose_a" value="$(var initial_pose_a)" />
-            <arg name="state" value="$(var state)" />
-        </include>
 
         <node name="aruco_camera_test" if="$(var use_aruco_camera)" pkg="svea_charging" exec="aruco_camera_test.py" output="screen">
             <param name="dictionary" value="$(var aruco_dictionary)"/>
