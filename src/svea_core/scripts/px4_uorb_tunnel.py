@@ -519,7 +519,7 @@ class Px4UorbTunnelNode(Node):
     def __init__(self) -> None:
         super().__init__("px4_uorb_tunnel")
 
-        self.declare_parameter("mavlink_topic", "/mavros/tunnel/out")
+        self.declare_parameter("mavlink_topic", "mavros/tunnel/out")
         self.declare_parameter("payload_type", self.UORB_TUNNEL_PAYLOAD_TYPE)
         self.declare_parameter("ros_msg_packages", "px4_msgs,svea_msgs")
         self.declare_parameter("legacy_topic_map", "1:power_monitor,2:gpio_in")
@@ -558,7 +558,7 @@ class Px4UorbTunnelNode(Node):
         self._topic_publishers_latest: dict[str, Any] = {}
         self._topic_publishers_instance: dict[tuple[str, int], Any] = {}
 
-        self._frame_pub = self.create_publisher(String, "/px4/uorb_tunnel/frame", 100)
+        self._frame_pub = self.create_publisher(String, "px4/uorb_tunnel/frame", 100)
         self._validate_ros_message_compatibility()
 
         # Telemetry tracking
@@ -675,7 +675,7 @@ class Px4UorbTunnelNode(Node):
         if pub is not None:
             return pub
 
-        ros_topic = f"/px4/uorb/{topic_name}"
+        ros_topic = f"px4/uorb/{topic_name}"
         pub = self.create_publisher(msg_cls, ros_topic, 20)
         self._topic_publishers_latest[topic_name] = pub
         return pub
@@ -686,7 +686,7 @@ class Px4UorbTunnelNode(Node):
         if pub is not None:
             return pub
 
-        ros_topic = f"/px4/uorb/{topic_name}/instance_{instance}"
+        ros_topic = f"px4/uorb/{topic_name}/instance_{instance}"
         pub = self.create_publisher(msg_cls, ros_topic, 20)
         self._topic_publishers_instance[key] = pub
         return pub

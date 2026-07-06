@@ -60,9 +60,10 @@ def main(
         USE_SIM_TIME = False
 
         # Load default parameters
-        LOCAL_EKF_PARAMS = bl.load_params("svea_localization", "robot_localization/local_ekf.yaml")
-        GLOBAL_EKF_PARAMS = bl.load_params("svea_localization", "robot_localization/global_ekf.yaml")
-        AMCL_PARAMS = bl.load_params("svea_localization", "nav2_amcl/amcl.yaml")
+        LOCAL_EKF_PARAMS = bl.load_params("svea_localization", "local_ekf.yaml", qualifier='**')
+        GLOBAL_EKF_PARAMS = bl.load_params("svea_localization", "global_ekf.yaml", qualifier='**')
+        AMCL_PARAMS = bl.load_params("svea_localization", "amcl.yaml", qualifier='**')
+
 
         bl.node("robot_localization", "ekf_node",
                 name="ekf_local",
@@ -71,10 +72,10 @@ def main(
                     odom_frame=odom_frame,
                     base_link_frame=base_frame,
                     world_frame=odom_frame,
-                    imu0="/lli/filtered/imu",
-                    twist0="/lli/filtered/encoders"
+                    imu0 = f"{name}/mavros/imu/data_raw",
+                    odom0 = f"{name}/mavros/wheel_odometry/odom"
                 ),
-                remap={"/odometry/filtered": f"{name}/odometry/local"})
+                remaps={"/odometry/filtered": f"{name}/odometry/local"})
 
         if is_indoor:
 
@@ -102,7 +103,7 @@ def main(
                     name="lifecycle_manager_amcl",
                     params=dict(use_sim_time=USE_SIM_TIME,
                                 autostart=True,
-                                node_names=["amcl"]))
+                                node_names=str(["amcl"])))
 
         else:
 
@@ -147,8 +148,7 @@ def main(
                         odom_frame=odom_frame,
                         base_link_frame=base_frame,
                         world_frame=map_frame,
-                        imu0="/lli/filtered/imu",
-                        twist0="/lli/filtered/encoders",
-                        odom0=f"{name}/odometry/gps"
+                        imu0 = f"{name}/mavros/imu/data_raw",
+                        odom0 = f"{name}/mavros/wheel_odometry/odom"
                     ),
                     remap={"/odometry/filtered": f"{name}/odometry/global"})
