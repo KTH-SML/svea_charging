@@ -2,6 +2,7 @@
 
 import cv2
 import numpy as np
+import tf2_geometry_msgs  # Registers geometry message transforms with tf2.
 from cv_bridge import CvBridge
 from geometry_msgs.msg import Point
 from sensor_msgs.msg import Image

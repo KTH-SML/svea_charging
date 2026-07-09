@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 
 import numpy as np
+import tf2_geometry_msgs  # Registers geometry message transforms with tf2.
 from geometry_msgs.msg import Point
 from geometry_msgs.msg import PoseArray
 from visualization_msgs.msg import Marker

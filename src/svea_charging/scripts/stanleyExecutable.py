@@ -2,10 +2,11 @@
 
 import numpy as np
 from geometry_msgs.msg import Point
-from geometry_msgs.msg import PoseArray, PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseArray, PoseStamped
 from visualization_msgs.msg import Marker
 import time
 
+import tf2_geometry_msgs  # Registers geometry message transforms with tf2.
 from svea_core.interfaces import LocalizationInterface
 from svea_charging.controllers.stanleyController import StanleyController
 from svea_core import rosonic as rx
@@ -51,6 +52,8 @@ class stanley_control(rx.Node):
     use_adaptive_speed = rx.Parameter(True)
     use_mocap_goal = rx.Parameter(False)
     use_mocap = rx.Parameter(False)
+    mocap_svea_pose_topic = rx.Parameter("/svea3/pose")
+    mocap_charging_station_pose_topic = rx.Parameter("/mocap/charging_station/pose")
     aruco_goal_topic = rx.Parameter("aruco/poses")
     aruco_pose_is_car_in_marker_frame = rx.Parameter(True)
     aruco_goal_offset = rx.Parameter(0.0)  # stop short of marker center [m]
@@ -72,16 +75,16 @@ class stanley_control(rx.Node):
     dist_to_goal = rx.Publisher(Float32, 'dist_to_goal', qos_pubber)
 
     #Subscribers
-    @rx.Subscriber(PoseWithCovarianceStamped, '/mocap/svea/pose', qos_pubber)
-    def _svea67_pose_cb(self, msg: PoseWithCovarianceStamped):
+    @rx.Subscriber(PoseStamped, mocap_svea_pose_topic, qos_pubber)
+    def _svea67_pose_cb(self, msg: PoseStamped):
         self.svea_pose = msg
         self.svea_identified_mocap = True
 
-    @rx.Subscriber(PoseWithCovarianceStamped, '/mocap/charging_station/pose', qos_pubber)
-    def _charging_station_cb(self, msg: PoseWithCovarianceStamped):
+    @rx.Subscriber(PoseStamped, mocap_charging_station_pose_topic, qos_pubber)
+    def _charging_station_cb(self, msg: PoseStamped):
         if not self.charging_station_identified_mocap: #runs once
             self.charging_station_pose = msg
-            self.goal = [msg.pose.pose.position.x, msg.pose.pose.position.y]
+            self.goal = [msg.pose.position.x, msg.pose.position.y]
             pointOne, pointTwo = self.calculate_points()
             self.waypoints = [pointTwo, pointOne, self.goal]
             self.charging_station_identified_mocap = True
@@ -205,14 +208,14 @@ class stanley_control(rx.Node):
 
         self.wait_log_throttle = 0
         state = (
-            self.svea_pose.pose.pose.position.x,
-            self.svea_pose.pose.pose.position.y,
+            self.svea_pose.pose.position.x,
+            self.svea_pose.pose.position.y,
             euler_from_quaternion(
                 [
-                    self.svea_pose.pose.pose.orientation.x,
-                    self.svea_pose.pose.pose.orientation.y,
-                    self.svea_pose.pose.pose.orientation.z,
-                    self.svea_pose.pose.pose.orientation.w,
+                    self.svea_pose.pose.orientation.x,
+                    self.svea_pose.pose.orientation.y,
+                    self.svea_pose.pose.orientation.z,
+                    self.svea_pose.pose.orientation.w,
                 ]
             )[2],
             0.0,
@@ -224,10 +227,10 @@ class stanley_control(rx.Node):
 
 
     def calculate_points(self):
-        station_x = self.charging_station_pose.pose.pose.position.x
-        station_y = self.charging_station_pose.pose.pose.position.y
+        station_x = self.charging_station_pose.pose.position.x
+        station_y = self.charging_station_pose.pose.position.y
 
-        q = self.charging_station_pose.pose.pose.orientation
+        q = self.charging_station_pose.pose.orientation
         quat = [q.x, q.y, q.z, q.w]
 
         _, _, station_yaw = euler_from_quaternion(quat)

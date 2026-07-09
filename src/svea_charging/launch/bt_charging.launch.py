@@ -9,6 +9,8 @@ def main(
     map_name: str = "sml",
     is_sim: bool = False,
     use_mocap: bool = True,
+    mocap_svea_pose_topic: str = "/svea3/pose",
+    mocap_charging_station_pose_topic: str = "/mocap/charging_station/pose",
     use_foxglove: bool = True,
     initial_pose_x: float = -2.5,
     initial_pose_y: float = 0.0,
@@ -57,6 +59,7 @@ def main(
                     name="usb_cam_node",
                     params=dict(
                         video_device="/dev/video0",
+                        camera_name="narrow_stereo",
                         frame_id=camera_frame_id,
                         pixel_format="mjpeg2rgb",
                         image_width=640,
@@ -104,6 +107,8 @@ def main(
                     use_rviz=use_foxglove,
                     is_sim=is_sim,
                     use_mocap=use_mocap,
+                    mocap_svea_pose_topic=mocap_svea_pose_topic,
+                    mocap_charging_station_pose_topic=mocap_charging_station_pose_topic,
                     **{"localization/base_frame": f"{name}/base_link"},
                 ))
 
