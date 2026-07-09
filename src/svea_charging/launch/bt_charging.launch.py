@@ -40,10 +40,6 @@ def main(
     if not aruco_calibration_file:
         aruco_calibration_file = bl.find("svea_charging", "params/camera.yaml")
 
-    bl.include("svea_core", "map_and_foxglove.launch.py",
-               map_pkg=map_pkg,
-               map_name=map_name,
-               use_foxglove=use_foxglove)
 
     bl.include("svea_core", "svea.launch.py",
                name=name,
@@ -52,7 +48,8 @@ def main(
                map_name=map_name,
                initial_pose_x=initial_pose_x,
                initial_pose_y=initial_pose_y,
-               initial_pose_a=initial_pose_a)
+               initial_pose_a=initial_pose_a,
+               use_foxglove=use_foxglove,)
 
     with bl.group(name):
         if not is_sim:
