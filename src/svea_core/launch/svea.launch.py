@@ -29,7 +29,7 @@ def main(
     ## External Communication
     use_zenoh: bool = False,
     ## Foxglove
-    use_foxglove: bool = False,
+    use_foxglove: bool = True,
     use_urdf: bool = False,
 ):
     bl = BetterLaunch()

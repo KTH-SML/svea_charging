@@ -40,9 +40,9 @@ class stanley_control(rx.Node):
 
 
     endPoint = rx.Parameter('[1.891350, 1.363510]') #x= -1.885,y=  1.348, yaw = 90deg alt x = 1.6
-    endPoints = rx.Parameter('[-1.51, 0.0], [-1.51, 1.363510], [-0.64, 1.363510], [-0.1, 1.363510], [1.6, 1.363510], [1.891350, 1.363510]')
+    endPoints = rx.Parameter('[-1.51, 1.363510], [-0.64, 1.363510], [-0.1, 1.363510], [1.6, 1.363510], [1.891350, 1.363510]')
 
-    target_velocity = rx.Parameter(0.45)
+    target_velocity = rx.Parameter(0.4)
     controller_name = rx.Parameter("stanley")
     active_controller = rx.Parameter("idle")
 
@@ -207,17 +207,28 @@ class stanley_control(rx.Node):
             return None
 
         self.wait_log_throttle = 0
+        
+        # Extract raw mocap pose
+        x_raw = self.svea_pose.pose.position.x
+        y_raw = self.svea_pose.pose.position.y
+        yaw_raw = euler_from_quaternion(
+            [
+                self.svea_pose.pose.orientation.x,
+                self.svea_pose.pose.orientation.y,
+                self.svea_pose.pose.orientation.z,
+                self.svea_pose.pose.orientation.w,
+            ]
+        )[2]
+        
+        # Rotate 90 degrees clockwise
+        x_rotated = y_raw
+        y_rotated = -x_raw
+        yaw_rotated = yaw_raw - np.pi / 2
+        
         state = (
-            self.svea_pose.pose.position.x,
-            self.svea_pose.pose.position.y,
-            euler_from_quaternion(
-                [
-                    self.svea_pose.pose.orientation.x,
-                    self.svea_pose.pose.orientation.y,
-                    self.svea_pose.pose.orientation.z,
-                    self.svea_pose.pose.orientation.w,
-                ]
-            )[2],
+            x_rotated,
+            y_rotated,
+            yaw_rotated,
             0.0,
         )
         if not self.controller_ready:

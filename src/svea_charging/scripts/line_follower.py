@@ -64,7 +64,7 @@ class LineFollowerLocalizationInterface(LocalizationInterface):
 class line_follower(rx.Node):
     dt = rx.Parameter(0.05)
     image_topic = rx.Parameter("/svea67/image_raw")
-    target_velocity = rx.Parameter(0.30)
+    target_velocity = rx.Parameter(0.4)
     max_velocity = rx.Parameter(0.45)
     stop_on_lost_line = rx.Parameter(True)
     controller_name = rx.Parameter("line_follower")

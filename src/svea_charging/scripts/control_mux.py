@@ -70,7 +70,7 @@ class control_mux(rx.Node):
 
     def loop(self):
         cmd = self._get_selected_command()
-        self.actuation.send_control(cmd.steering, cmd.velocity)
+        self.actuation.send_control(cmd.steering, -1*cmd.velocity)
 
     def _get_selected_command(self) -> ControllerCommand:
         active = str(self.active_controller)
