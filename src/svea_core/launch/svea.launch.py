@@ -1,6 +1,4 @@
-#!/bin/bash python3
-from click import command
-
+#!/usr/bin/env python3
 from better_launch import BetterLaunch, launch_this
 
 @launch_this
@@ -11,15 +9,15 @@ def main(
     initial_pose_x: float = 0.0,
     initial_pose_y: float = 0.0,
     initial_pose_a: float = 0.0, # Yaw Angle
+    ## Localization Settings
+    use_localization: bool = True,
+    ## Map
+    use_map: bool = True,
     map_pkg: str = 'svea_core',
     map_name: str = 'sml',
-    use_urdf: bool = False,
     ## Low-Level Interface Settings
     lli_serial_device: str = '/dev/serial/by-id/usb-SVEA_PX4_AUTOPILOT_0-if00',
     lli_baud_rate: int = 921600,
-    # mavproxy_qgc: str = 'host.docker.internal',
-    ## Localization Settings
-    use_localization: bool = True,
     ## LiDAR Settings
     use_lidar: bool = True,
     ## RTK-GPS Settings
@@ -30,10 +28,11 @@ def main(
     rtk_password: str = '',
     ## External Communication
     use_zenoh: bool = False,
+    ## Foxglove
+    use_foxglove: bool = True,
+    use_urdf: bool = False,
 ):
     bl = BetterLaunch()
-
-    if use_urdf is None: use_urdf = is_sim
 
     if use_localization:
 
@@ -44,6 +43,7 @@ def main(
                    initial_pose_x=initial_pose_x,
                    initial_pose_y=initial_pose_y,
                    initial_pose_a=initial_pose_a,
+                   use_map=use_map,
                    map_pkg=map_pkg,
                    map_name=map_name,
                    use_lidar=use_lidar,
@@ -80,13 +80,18 @@ def main(
         #                     from_topic=f"{name}/scan",
         #                     to_topic=f"{name}/scan/filtered"))
 
-    if use_urdf:
-        bl.include("svea_core", "visualization.launch.py",
-                   name=name)
-        
     if use_zenoh:
 
         ZENOH_CONFIG = bl.find("svea_core", "params/zenoh.json5")
 
         bl.process(f"zenoh-bridge-ros2dds -c {ZENOH_CONFIG}",
                    name="zenoh_bridge")
+
+    if use_foxglove:
+        bl.include("foxglove_bridge", "foxglove_bridge_launch.xml",
+                   port=8765)
+
+    if use_urdf:
+        bl.include("svea_core", "visualization.launch.py",
+                   name=name)
+

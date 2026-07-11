@@ -20,7 +20,7 @@ def main(
     base_frame = base_frame.format(name=name)
 
     try:
-        OBSTACLE_MAP = bl.load_params(map_pkg, f"{map_name}.obstacles.yaml", qualifier='**')
+        OBSTACLE_MAP = bl.find(map_pkg, f"{map_name}.obstacles.yaml")
     except (ValueError, FileNotFoundError):
         OBSTACLE_MAP = {}
 
@@ -40,6 +40,7 @@ def main(
             # Start simulated LiDAR
             bl.node("svea_core", "sim_lidar.py",
                     name="sim_lidar",
-                    params=OBSTACLE_MAP | dict(
+                    param_files=OBSTACLE_MAP,
+                    params= dict(
                         laser_frame=f"{name}/laser",
                     ))

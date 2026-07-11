@@ -5,10 +5,11 @@ import xml.etree.ElementTree as ET
 
 package = ET.parse('package.xml').getroot()
 name = package.find('name').text
+version = package.find('version').text
 
 setup(
     name=name,
-    version='0.0.0',
+    version=version,
     packages=find_packages(include=[name, f"{name}.*"]),
     data_files=[
         ('share/ament_index/resource_index/packages', [f'resource/{name}']),

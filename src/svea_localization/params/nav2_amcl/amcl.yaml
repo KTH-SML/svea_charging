@@ -1,13 +1,12 @@
-
-amcl:
+/**:
   ros__parameters:
 
     # --- Timing & TF ---
-    transform_tolerance: 0.1
+    transform_tolerance: 0.2
 
-    # --- Motion update thresholds (reduce CPU → reduce lag) ---
-    update_min_a: 0.01
-    update_min_d: 0.01
+    # --- Motion update thresholds (lower thresholds -> update more often) ---
+    update_min_a: 0.05
+    update_min_d: 0.05
 
     # --- Adaptive sampling (KLD) ---
     min_particles: 100
@@ -22,10 +21,10 @@ amcl:
     beam_skip_threshold: 0.3
 
     # --- Noise / odom model ---
-    alpha1: 0.4                 # rot noise on rot
-    alpha2: 0.4                 # rot noise on trans
+    alpha1: 0.1                 # rot noise on rot
+    alpha2: 0.6                 # rot noise on trans
     alpha3: 1.6                 # trans noise on trans (was 1.6, very high)
-    alpha4: 0.8                 # trans noise on rot
+    alpha4: 0.1                 # trans noise on rot
     # alpha5: 0.05                # (keep low unless you have strafe)
 
     # --- Measurement mixture weights ---
@@ -43,8 +42,8 @@ amcl:
     robot_model_type: "nav2_amcl::DifferentialMotionModel"
     resample_interval: 1
     tf_broadcast: true
-    map_topic: map
-    scan_topic: /scan/filtered
+    map_topic: /map
+    scan_topic: scan
     set_initial_pose: true
     initial_pose:
       x: 0.0
@@ -59,8 +58,8 @@ amcl:
     laser_likelihood_max_dist: 2.0
     laser_max_range: 20.0
     laser_min_range: -1.0
-    laser_model_type: "likelihood_field"
+    laser_model_type: "likelihood_field_prob"
     max_beams: 50
-    recovery_alpha_fast: 0.005
-    recovery_alpha_slow: 0.005
+    recovery_alpha_fast: 0.1
+    recovery_alpha_slow: 0.001
     #save_pose_rate: 0.5

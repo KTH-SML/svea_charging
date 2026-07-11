@@ -9,8 +9,11 @@ def main(
     initial_pose_x: float = 0.0,
     initial_pose_y: float = 0.0,
     initial_pose_a: float = 0.0,
+    # Map
+    use_map: bool = True,
     map_pkg: str = 'svea_core',
     map_name: str = 'sml',
+    map_topic: str = '/map',
     # Coordinate Frames
     map_frame: str = 'map',
     odom_frame: str = '{name}/odom',
@@ -37,6 +40,14 @@ def main(
     odom_frame = odom_frame.format(name=name)
     base_frame = base_frame.format(name=name)
 
+    if use_map:
+
+        bl.node("nav2_map_server", "map_server",
+                name="map_server",
+                params=dict(yaml_filename=bl.find(map_pkg, f"{map_name}.yaml"),
+                            use_sim_time=False,
+                            topic_name=map_topic))
+
     with bl.group(name):
 
         # Static Transforms
@@ -60,50 +71,41 @@ def main(
         USE_SIM_TIME = False
 
         # Load default parameters
-        LOCAL_EKF_PARAMS = bl.load_params("svea_localization", "local_ekf.yaml", qualifier='**')
-        GLOBAL_EKF_PARAMS = bl.load_params("svea_localization", "global_ekf.yaml", qualifier='**')
-        AMCL_PARAMS = bl.load_params("svea_localization", "amcl.yaml", qualifier='**')
+        LOCAL_EKF_PARAMS = bl.find("svea_localization", "local_ekf.yaml")
+        GLOBAL_EKF_PARAMS = bl.find("svea_localization", "global_ekf.yaml")
+        AMCL_PARAMS = bl.find("svea_localization", "amcl.yaml")
 
-
-        bl.node("robot_localization", "ekf_node",
-                name="ekf_local",
-                params=LOCAL_EKF_PARAMS | dict(
-                    map_frame=map_frame,
-                    odom_frame=odom_frame,
-                    base_link_frame=base_frame,
-                    world_frame=odom_frame,
-                    imu0 = f"{name}/mavros/imu/data_raw",
-                    odom0 = f"{name}/mavros/wheel_odometry/odom"
-                ),
-                remaps={"/odometry/filtered": f"{name}/odometry/local"})
+        with bl.group(name):
+            bl.node("robot_localization", "ekf_node",
+                    name="ekf_local",
+                    param_files=LOCAL_EKF_PARAMS,
+                    params={"map_frame": map_frame,
+                            "odom_frame": odom_frame,
+                            "base_link_frame": base_frame,
+                            "world_frame": odom_frame},
+                    remaps={"odometry/filtered": "odometry/local"})
 
         if is_indoor:
 
-            if use_lidar:
-                with bl.group(name):
-                    bl.include("svea_localization", "lidar.launch.py",
-                               lidar_ip=lidar_ip,
-                               lidar_frame=f"{name}/laser")
+            with bl.group(name):
+                if use_lidar:
+                        bl.include("svea_localization", "lidar.launch.py",
+                                   lidar_ip=lidar_ip,
+                                   lidar_frame=f"{name}/laser")
 
-            bl.node("nav2_amcl", "amcl",
-                    name="amcl",
-                    params=AMCL_PARAMS | dict(
-                        use_sim_time=USE_SIM_TIME,
-                        yaml_filename=bl.find(map_pkg, f"{map_name}.yaml"),
-                        scan_topic=f"{name}/scan/filtered",
-                        initial_pose_x=initial_pose_x,
-                        initial_pose_y=initial_pose_y,
-                        initial_pose_a=initial_pose_a,
-                        base_frame_id=base_frame,
-                        odom_frame_id=odom_frame,
-                        map_frame_id=map_frame,
-                        map_ztopic="/map",
-                    ))
-            bl.node("nav2_lifecycle_manager", "lifecycle_manager",
-                    name="lifecycle_manager_amcl",
-                    params=dict(use_sim_time=USE_SIM_TIME,
-                                autostart=True,
-                                node_names=str(["amcl"])))
+                # BetterLaunch manages lifecycle nodes automatically, so no need to
+                # run lifecycle_manager manually.
+                bl.node("nav2_amcl", "amcl",
+                        name="amcl",
+                        param_files=AMCL_PARAMS,
+                        params={"use_sim_time": USE_SIM_TIME,
+                                "yaml_filename": bl.find(map_pkg, f"{map_name}.yaml"),
+                                "initial_pose_x": initial_pose_x,
+                                "initial_pose_y": initial_pose_y,
+                                "initial_pose_a": initial_pose_a,
+                                "base_frame_id": base_frame,
+                                "odom_frame_id": odom_frame,
+                                "map_frame_id": map_frame})
 
         else:
 
@@ -143,12 +145,11 @@ def main(
 
             bl.node("robot_localization", "ekf_node",
                     name="ekf_global",
-                    params=GLOBAL_EKF_PARAMS | dict(
-                        map_frame=map_frame,
-                        odom_frame=odom_frame,
-                        base_link_frame=base_frame,
-                        world_frame=map_frame,
-                        imu0 = f"{name}/mavros/imu/data_raw",
-                        odom0 = f"{name}/mavros/wheel_odometry/odom"
-                    ),
+                    param_files=GLOBAL_EKF_PARAMS,
+                    params={"map_frame": map_frame,
+                            "odom_frame": odom_frame,
+                            "base_link_frame": base_frame,
+                            "world_frame": map_frame,
+                            "imu0": f"{name}/mavros/imu/data_raw",
+                            "odom0": f"{name}/mavros/wheel_odometry/odom"},
                     remap={"/odometry/filtered": f"{name}/odometry/global"})
