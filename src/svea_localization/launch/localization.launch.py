@@ -109,47 +109,48 @@ def main(
 
         else:
 
-            if use_rtk:
-                bl.include("svea_localization", "rtk.launch.py",
-                           device=rtk_device,
-                           baud=rtk_baud,
-                           username=rtk_username,
-                           password=rtk_password)
-                
-            # Start NavSat Transform Node
-            bl.node("robot_localization", "navsat_transform_node",
-                    name="navsat_transform_node",
-                    params=dict(publish_filtered_gps=True,
-                                wait_for_datum=use_datum,
-                                delay=2.0,
-                                magnetic_declination_radians=0.0,
-                                yaw_offset=initial_pose_a,
-                                zero_altitude=True,
-                                broadcast_cartesian_transform_as_parent_frame=True,
-                                broadcast_cartesian_transform=True),
-                    ## TODO
-                    # remap= {'imu/data': '/imu/data',
-                    #         'gps/fix': '/gps/fix',
-                    #         'odometry/filtered': '/odometry/filtered/global'}
-                    )
+            with bl.group(name):
 
-            # Start Set Datum Node
-            if use_datum:
-                bl.node("svea_localization", "set_datum_node.py",
-                        name="set_datum_node",
-                        output="screen",
-                        params=dict(datum_service=datum_service,
-                                    service_timeout=60.0,
-                                    datum_file=datum_file,
-                                    datum_data=datum_data))
+                if use_rtk:
 
-            bl.node("robot_localization", "ekf_node",
-                    name="ekf_global",
-                    param_files=GLOBAL_EKF_PARAMS,
-                    params={"map_frame": map_frame,
-                            "odom_frame": odom_frame,
-                            "base_link_frame": base_frame,
-                            "world_frame": map_frame,
-                            "imu0": f"{name}/mavros/imu/data_raw",
-                            "odom0": f"{name}/mavros/wheel_odometry/odom"},
-                    remap={"/odometry/filtered": f"{name}/odometry/global"})
+                    bl.include("svea_localization", "rtk.launch.py",
+                                device=rtk_device,
+                                baud=rtk_baud,
+                                username=rtk_username,
+                                password=rtk_password)
+                    
+                # Start NavSat Transform Node
+                bl.node("robot_localization", "navsat_transform_node",
+                        name="navsat_transform_node",
+                        params=dict(publish_filtered_gps=True,
+                                    wait_for_datum=use_datum,
+                                    delay=2.0,
+                                    magnetic_declination_radians=0.0,
+                                    yaw_offset=initial_pose_a,
+                                    zero_altitude=True,
+                                    broadcast_cartesian_transform_as_parent_frame=True,
+                                    broadcast_cartesian_transform=True),
+                        ## TODO
+                        # remap= {'imu/data': '/imu/data',
+                        #         'gps/fix': '/gps/fix',
+                        #         'odometry/filtered': '/odometry/filtered/global'}
+                        )
+
+                # Start Set Datum Node
+                if use_datum:
+                    bl.node("svea_localization", "set_datum_node.py",
+                            name="set_datum_node",
+                            output="screen",
+                            params=dict(datum_service=datum_service,
+                                        service_timeout=60.0,
+                                        datum_file=datum_file,
+                                        datum_data=datum_data))
+
+                bl.node("robot_localization", "ekf_node",
+                        name="ekf_global",
+                        param_files=GLOBAL_EKF_PARAMS,
+                        params={"map_frame": map_frame,
+                                "odom_frame": odom_frame,
+                                "base_link_frame": base_frame,
+                                "world_frame": map_frame},
+                        remap={"odometry/filtered": "odometry/global"})

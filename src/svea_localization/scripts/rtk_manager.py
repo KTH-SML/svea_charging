@@ -14,6 +14,7 @@ from pyubx2 import (
     RTCM3_PROTOCOL,  # 4
 )
 
+from time import monotonic, sleep
 import rclpy
 import rclpy.clock
 from rclpy.node import Node
@@ -60,27 +61,30 @@ GPS_QUALITIES = {
 
 
 class RTKManager(Node):
-    RATE = 50
-
     def __init__(self):
         super().__init__("rtk_manager")
         # Read parameters
         self.declare_parameter('device', '/dev/ttyACM0')
         self.device = self.get_parameter('device').value #UART: /dev/ttyS0
-        if "/dev/ttyACM" in self.device or "/dev/gps" in self.device:
+        self.declare_parameter('receiver_interface', 'usb')
+        self.receiver_interface = self.get_parameter('receiver_interface').value.lower()
+        if self.receiver_interface == 'uart1':
+            self.rateUART1 = 1
+            self.rateUSB = 0
+        elif self.receiver_interface == 'usb':
             self.rateUART1 = 0
             self.rateUSB = 1
         else:
-            self.rateUART1 = 1
-            self.rateUSB = 0
-        self.declare_parameter('~baud', 250000)
-        self.baud = self.get_parameter('~baud').value #UART: 38400
-        self.declare_parameter('~gps_frame', 'gps')
-        self.frame_id = self.get_parameter('~gps_frame').value
-        self.declare_parameter('~dynamic_model', 'portable')
-        self.dynamic_model = self.get_parameter('~dynamic_model').value
-        # Setup ROS Rate
-        self.rate = self.create_rate(self.RATE)
+            raise ValueError(
+                "Invalid receiver_interface. Expected 'uart1' or 'usb', "
+                f"got '{self.receiver_interface}'."
+            )
+        self.declare_parameter('baud', 250000)
+        self.baud = self.get_parameter('baud').value #UART: 38400
+        self.declare_parameter('gps_frame', 'gps')
+        self.frame_id = self.get_parameter('gps_frame').value
+        self.declare_parameter('dynamic_model', 'portable')
+        self.dynamic_model = self.get_parameter('dynamic_model').value
         #  Open serial port
         try:
             self.serial = Serial(self.device, self.baud, bytesize=EIGHTBITS, parity=PARITY_NONE,stopbits=STOPBITS_ONE,timeout=1, exclusive=True)
@@ -106,40 +110,57 @@ class RTKManager(Node):
     def _init_pub(self):
         """Initializes publishers for necessary and sufficient topics"""
         # Nmea message which get sent to virtual NTRIP servers which give correction message from closes base station based on own location
-        self.nmea_pub = self.create_publisher(Sentence, "/nmea", 10)
+        self.nmea_pub = self.create_publisher(Sentence, "nmea", 10)
         # Publish the satellite fix
-        self.fix_pub = self.create_publisher(NavSatFix, "/fix", 10)
+        self.fix_pub = self.create_publisher(NavSatFix, "fix", 10)
         # Heading of 2-D motion in [deg]
-        self.heading_motion_pub = self.create_publisher(Float64, "/heading_motion", 10)
+        self.heading_motion_pub = self.create_publisher(Float64, "heading_motion", 10)
         # Heading of vehicle in 2-D in [deg]
-        self.heading_vehicle_pub = self.create_publisher(Float64, "/heading_vehicle", 10)
+        self.heading_vehicle_pub = self.create_publisher(Float64, "heading_vehicle", 10)
         # Combined heading accuracy of vehicle and motion headings in [deg]
-        self.headingAcc_pub = self.create_publisher(Float64, "/heading_accuracy", 10)
+        self.headingAcc_pub = self.create_publisher(Float64, "heading_accuracy", 10)
         # Ground speed (2-D) in [m/s]
-        self.speed_pub = self.create_publisher(Float64, "/speed", 10)
+        self.speed_pub = self.create_publisher(Float64, "speed", 10)
         # Estimate of ground speed accuracy in [m/s]
-        self.speedAcc_pub = self.create_publisher(Float64, "/speed_accuracy", 10)
+        self.speedAcc_pub = self.create_publisher(Float64, "speed_accuracy", 10)
         # Magnetic declination in [deg]
-        self.magDec_pub = self.create_publisher(Float64, "/magnetic_declination", 10)
+        self.magDec_pub = self.create_publisher(Float64, "magnetic_declination", 10)
         # Accuracy of magnetic declination in [deg]
-        self.magDecAcc_pub = self.create_publisher(Float64, "/magnetic_declination_accuracy", 10)
+        self.magDecAcc_pub = self.create_publisher(Float64, "magnetic_declination_accuracy", 10)
 
 
     def _init_sub(self):
         """Initialize subscribers"""
         # Subscribe to RTCM correction messages from NTRIP Client
-        self.create_subscription(Message, "/rtcm", self._handle_rtcm_cb, 10)
+        self.create_subscription(Message, "rtcm", self._handle_rtcm_cb, 10)
 
     def set_config(self, msgClass, msgID, **kwargs):
         """Utility function which write a configuration message to receiver and awaits an acknowledgement."""
         cfg = UBXMessage(
             "CFG", "CFG-MSG", SET, msgClass=msgClass, msgID=msgID, **kwargs
         )
+        self._send_and_wait_for_ack(
+            cfg,
+            f"CFG-MSG for msgClass:{msgClass} msgID:{msgID}",
+        )
+
+    def _send_and_wait_for_ack(self, cfg, description, timeout=5.0):
+        """Send a UBX configuration and wait for its ACK response."""
         self.serial.write(cfg.serialize())
-        _, parsed_msg = self.ubx_reader.read()
-        assert (
-            parsed_msg.identity == "ACK-ACK"
-        ), f"Failed to set CFG-MSG for msgClass:{msgClass} msgID:{msgID}"
+        deadline = monotonic() + timeout
+
+        while rclpy.ok() and monotonic() < deadline:
+            _, parsed_msg = self.ubx_reader.read()
+            if parsed_msg is None:
+                continue
+            if parsed_msg.identity == "ACK-ACK":
+                return
+            if parsed_msg.identity == "ACK-NAK":
+                raise RuntimeError(f"Receiver rejected {description}")
+
+        if not rclpy.ok():
+            raise RuntimeError(f"Interrupted while waiting for ACK for {description}")
+        raise TimeoutError(f"Timed out waiting for ACK for {description}")
 
     def set_dynamic_model(self, model):
         # CFG-MSG-NAV5 set dynModel (dynamic Model) to model
@@ -159,21 +180,47 @@ class RTKManager(Node):
                 dynModel=DYN_MODEL_MAP.get(model, 0),
                 dyn=1,  # MASK to update only dynamic model
             )
-            self.serial.write(cfg.serialize())
-            _, parsed_msg = self.ubx_reader.read()
-            assert (
-                parsed_msg.identity == "ACK-ACK"
-            ), f"Failed to set CFG-NAV5 for dynamic model:{model}."
+            self._send_and_wait_for_ack(
+                cfg,
+                f"CFG-NAV5 for dynamic model:{model}",
+            )
 
     def setup_receiver(self):
+        
         # CFG-MSG-NAV-STATUS set rateUSB to 0
-        self.set_config(0x01, 0x03, rateUART1=self.rateUART1, rateUSB=self.rateUSB)
+        while rclpy.ok():
+            try:
+                self.set_config(0x01, 0x03, rateUART1=self.rateUART1, rateUSB=self.rateUSB)
+            except Exception as e:
+                self.get_logger().error(f"Error occurred while setting up receiver: {e}")
+                sleep(2)
+            else:
+                break
+
+        # Disable high-volume raw measurement messages that are not used by
+        # this node. Keeping them enabled can overflow a UART bridge.
+        self.set_config(0x02, 0x15, rateUART1=0, rateUSB=0)  # RXM-RAWX
+        self.set_config(0x02, 0x13, rateUART1=0, rateUSB=0)  # RXM-SFRBX
+
+        # NTRIP only needs GGA. Position, velocity, and covariance are taken
+        # from UBX NAV messages, so disable the other periodic NMEA messages.
+        self.set_config(
+            0xF0, 0x00, rateUART1=self.rateUART1, rateUSB=self.rateUSB
+        )  # NMEA-GGA
+        for nmea_msg_id in (0x01, 0x02, 0x03, 0x04, 0x05):
+            self.set_config(
+                0xF0, nmea_msg_id, rateUART1=0, rateUSB=0
+            )
+
         # CFG-MSG-NAV-PVT set rateUSB to 1
         self.set_config(0x01, 0x07, rateUART1=self.rateUART1, rateUSB=self.rateUSB)
+        
         # CFG-MSG-NAV-COV set rateUSB to 1
         self.set_config(0x01, 0x36, rateUART1=self.rateUART1, rateUSB=self.rateUSB)
+        
         # CFG-MSG-RXM-RTCM set rateUSB to 1
         self.set_config(0x02, 0x32, rateUART1=self.rateUART1, rateUSB=self.rateUSB)
+        
         # CFG-NAV5 set dynModel to self.dynamic_model
         self.set_dynamic_model(self.dynamic_model)
 
@@ -189,8 +236,8 @@ class RTKManager(Node):
         self.serial.write(raw_rtcm)
 
     def _read_serial_handler(self):
-        """Manager of all incoming messages from Serial port, reads from serial port at self.RATE [Hz]"""
-        while self.ok():
+        """Continuously read and handle incoming serial messages."""
+        while rclpy.ok():
             raw_msg, parsed_msg = self.ubx_reader.read()
             msg_protocol = protocol(raw_msg)
             if msg_protocol == UBX_PROTOCOL:
@@ -240,32 +287,32 @@ class RTKManager(Node):
 
                         # Publish Speed
                         self.speed_pub.publish(
-                            Float64(parsed_msg.gSpeed * 1e-3)
+                            Float64(data=parsed_msg.gSpeed * 1e-3)
                         )  # [m/s] convert from mm/s to m/s
                         self.speedAcc_pub.publish(
-                            Float64(parsed_msg.sAcc * 1e-3)
+                            Float64(data=parsed_msg.sAcc * 1e-3)
                         )  # [m/s] convert from mm/s to m/s
                         # Publish Heading
                         self.heading_motion_pub.publish(
-                            # Float64(parsed_msg.headMot * 1e-5)
-                            Float64(parsed_msg.headMot)
+                            # Float64(data=parsed_msg.headMot * 1e-5)
+                            Float64(data=parsed_msg.headMot)
                         )  # [deg]
                         self.heading_vehicle_pub.publish(
-                            # Float64(parsed_msg.headVeh * 1e-5)
-                            Float64(parsed_msg.headVeh)
+                            # Float64(data=parsed_msg.headVeh * 1e-5)
+                            Float64(data=parsed_msg.headVeh)
                         )  # [deg]
                         self.headingAcc_pub.publish(
-                            # Float64(parsed_msg.headAcc * 1e-5)
-                            Float64(parsed_msg.headAcc)
+                            # Float64(data=parsed_msg.headAcc * 1e-5)
+                            Float64(data=parsed_msg.headAcc)
                         )  # [deg]
                         # Publish magDec
                         self.magDec_pub.publish(
-                            # Float64(parsed_msg.magDec * 1e-2)
-                            Float64(parsed_msg.magDec)
+                            # Float64(data=parsed_msg.magDec * 1e-2)
+                            Float64(data=parsed_msg.magDec)
                         )  # [deg]
                         self.magDecAcc_pub.publish(
-                            # Float64(parsed_msg.magAcc * 1e-2)
-                            Float64(parsed_msg.magAcc)
+                            # Float64(data=parsed_msg.magAcc * 1e-2)
+                            Float64(data=parsed_msg.magAcc)
                         )  # [deg]
 
                 # https://github.com/KumarRobotics/ublox/blob/master/ublox_msgs/msg/CfgNAV5.msg
@@ -321,7 +368,7 @@ class RTKManager(Node):
                     nmea_sentence_msg = Sentence()
                     nmea_sentence_msg.sentence = nmea_str
                     nmea_sentence_msg.header.frame_id = self.frame_id
-                    nmea_sentence_msg.header.stamp = rospy.Time().now()
+                    nmea_sentence_msg.header.stamp = self.get_clock().now().to_msg()
                     self.nmea_pub.publish(nmea_sentence_msg)
 
                 except UnicodeError as e:
@@ -330,8 +377,6 @@ class RTKManager(Node):
                             raw_msg
                         )
                     )
-
-            self.rate.sleep()
 
 def main(args=None):
     rclpy.init(args=args)

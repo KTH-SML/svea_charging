@@ -4,8 +4,9 @@ from better_launch import BetterLaunch, launch_this
 @launch_this
 def main(
     ## RTK RECEIVER ARGUMENTS
-    device: str = "/dev/ttyACM0",           # /dev/ttyS0 if connected via UART
-    baud: int = 250000,                     # 38400 if connected via UART
+    device: str = "/dev/serial/by-id/usb-Arduino_LLC_Arduino_MKR_WiFi_1010_C5EE644B5150484347202020FF0E0B39-if00",
+    baud: int = 115200,                     # 38400 if connected via UART
+    receiver_interface: str = "uart1",
     dynamic_model: str = "portable",
     ## NTRIP CLIENT ARGUMENTS (for swepos network rtk)
     host: str = "nrtk-swepos.lm.se",
@@ -18,6 +19,10 @@ def main(
     
     bl = BetterLaunch()
 
+    # The included NTRIP launch file parses launch arguments as YAML. Quote the
+    # password explicitly so a numeric-only password remains a string.
+    password_parameter = "'" + password.replace("'", "''") + "'"
+
     with bl.group("gps"):
 
         # Start RTK Manager Node
@@ -25,6 +30,7 @@ def main(
                 name="rtk_manager",
                 params=dict(device=device,
                             baud=baud,
+                            receiver_interface=receiver_interface,
                             gps_frame="gps",
                             dynamic_model=dynamic_model))
 
@@ -36,4 +42,4 @@ def main(
                mountpoint=mountpoint,
                authenticate=authenticate,
                username=username,
-               password=password)
+               password=password_parameter)
