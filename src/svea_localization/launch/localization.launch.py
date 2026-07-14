@@ -40,6 +40,17 @@ def main(
     odom_frame = odom_frame.format(name=name)
     base_frame = base_frame.format(name=name)
 
+    # MAVROS data_raw provides angular velocity but no absolute orientation.
+    # Seed both filters with an earth-referenced ENU yaw and integrate yaw rate.
+    # initial_pose_a is in radians: 0=east, pi/2=north.
+    ekf_initial_state = [
+        0.0, 0.0, 0.0,
+        0.0, 0.0, initial_pose_a,
+        0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0,
+    ]
+
     if use_map:
 
         bl.node("nav2_map_server", "map_server",
@@ -82,7 +93,8 @@ def main(
                     params={"map_frame": map_frame,
                             "odom_frame": odom_frame,
                             "base_link_frame": base_frame,
-                            "world_frame": odom_frame},
+                            "world_frame": odom_frame,
+                            "initial_state": ekf_initial_state},
                     remaps={"odometry/filtered": "odometry/local"})
 
         if is_indoor:
@@ -116,6 +128,8 @@ def main(
                     bl.include("svea_localization", "rtk.launch.py",
                                 device=rtk_device,
                                 baud=rtk_baud,
+                                gps_frame=f"{name}/gps",
+                                ntrip_namespace=f"{name}/gps",
                                 username=rtk_username,
                                 password=rtk_password)
                     
@@ -126,15 +140,15 @@ def main(
                                     wait_for_datum=use_datum,
                                     delay=2.0,
                                     magnetic_declination_radians=0.0,
-                                    yaw_offset=initial_pose_a,
+                                    yaw_offset=0.0,
+                                    use_odometry_yaw=True,
                                     zero_altitude=True,
                                     broadcast_cartesian_transform_as_parent_frame=True,
                                     broadcast_cartesian_transform=True),
-                        ## TODO
-                        # remap= {'imu/data': '/imu/data',
-                        #         'gps/fix': '/gps/fix',
-                        #         'odometry/filtered': '/odometry/filtered/global'}
-                        )
+                        remaps={"gps/fix": "gps/fix",
+                                "gps/filtered": "gps/filtered",
+                                "odometry/gps": "odometry/gps",
+                                "odometry/filtered": "odometry/global"})
 
                 # Start Set Datum Node
                 if use_datum:
@@ -152,5 +166,6 @@ def main(
                         params={"map_frame": map_frame,
                                 "odom_frame": odom_frame,
                                 "base_link_frame": base_frame,
-                                "world_frame": map_frame},
-                        remap={"odometry/filtered": "odometry/global"})
+                                "world_frame": map_frame,
+                                "initial_state": ekf_initial_state},
+                        remaps={"odometry/filtered": "odometry/global"})

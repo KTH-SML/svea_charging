@@ -19,7 +19,7 @@
     debug: false
     debug_out_file: /home/nvidia/bagfiles/localizationlog.txt
 
-    publish_tf: false
+    publish_tf: true
 
     publish_acceleration: false
 
@@ -46,7 +46,7 @@
     # GPS Odometry ###########################
     odom0: odometry/gps
 
-    odom0_config: [true, true, true,
+    odom0_config: [true, true, false,
                   false, false, false,
                   false, false, false,
                   false, false, false,
@@ -62,38 +62,37 @@
     odom0_nodelay: true
     odom0_relative: false
     odom0_differential: false
-    odom0_pose_rejection_threshold: 5
+    odom0_pose_rejection_threshold: 5.0
 
     ##########################################
     # IMU ####################################
-    imu0: /lli/sensor/imu
+    imu0: mavros/imu/data_raw
     imu0_config: [false, false, false,
-                  true,  true,  true,
                   false, false, false,
                   false, false, false,
+                  false, false, true,
                   false, false, false]
-    imu0_nodelay: true #default false
-    imu0_differential: true
+    imu0_nodelay: true
+    imu0_differential: false
     imu0_relative: false
     imu0_queue_size: 8
     #imu0_pose_rejection_threshold: 0.8                 # Note the difference in parameter names
     #imu0_twist_rejection_threshold: 1.0                #
     #imu0_linear_acceleration_rejection_threshold: 1.0  #
 
-    imu0_remove_gravitational_acceleration: false #default true
-    gravitational_acceleration: -0.35
+    imu0_remove_gravitational_acceleration: false
 
 
     ##########################################
     # Wheel encoder #############c#############
-    twist0: /lli/sensor/encoders
+    twist0: mavros/wheel_odometry/velocity
     twist0_config: [false, false, false,
                     false, false, false,
-                    true,  true,  false,
-                    false, false, false,
+                    true,  false, false,
+                    false, false, true,
                     false, false, false]
     twist0_nodelay: true
-    twist0_differential: true
+    twist0_differential: false
     twist0_relative: false
     twist0_queue_size: 8
     #twist0_rejection_threshold: 2.0                # Note the difference in parameter names
@@ -136,21 +135,11 @@
     #                           0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0.01, 0,
     #                           0,    0,    0,    0,    0,    0,    0,     0,     0,    0,    0,    0,    0,    0,    0.015]
 
-    process_noise_covariance:    [0.1,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,     0.0,    0.0,    0.0,
-                                  0.0,    0.1,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,     0.0,    0.0,    0.0,
-                                  0.0,    0.0,    0.1,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,     0.0,    0.0,    0.0,
-                                  0.0,    0.0,    0.0,    1.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,     0.0,    0.0,    0.0,
-                                  0.0,    0.0,    0.0,    0.0,    1.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,     0.0,    0.0,    0.0,
-                                  0.0,    0.0,    0.0,    0.0,    0.0,    1.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,     0.0,    0.0,    0.0,
-                                  0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    1.0,    0.0,    0.0,    0.0,     0.0,     0.0,     0.0,    0.0,    0.0,
-                                  0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    1.0,    0.0,    0.0,     0.0,     0.0,     0.0,    0.0,    0.0,
-                                  0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    1.0,    0.0,     0.0,     0.0,     0.0,    0.0,    0.0,
-                                  0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    10.0,    0.0,     0.0,     0.0,    0.0,    0.0,
-                                  0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     10.0,    0.0,     0.0,    0.0,    0.0,
-                                  0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     10.0,    0.0,    0.0,    0.0,
-                                  0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,     100.0,  0.0,    0.0,
-                                  0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,     0.0,    100.0,  0.0,
-                                  0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,     0.0,    0.0,    100.0]
+    process_noise_covariance:    [0.05, 0.05, 0.06,
+                                  0.03, 0.03, 0.06,
+                                  0.025, 0.025, 0.04,
+                                  0.01, 0.01, 0.02,
+                                  0.01, 0.01, 0.015]
     # [ADVANCED] This represents the initial value for the state estimate error covariance matrix. Setting a diagonal
     # value (variance) to a large value will result in rapid convergence for initial measurements of the variable in
     # question. Users should take care not to use large values for variables that will not be measured directly. The values

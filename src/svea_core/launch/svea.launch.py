@@ -4,25 +4,25 @@ from better_launch import BetterLaunch, launch_this
 @launch_this
 def main(
     name: str = 'self',
-    is_sim: bool = True,
-    is_indoor: bool = True,
+    is_sim: bool = False,
+    is_indoor: bool = False,
     initial_pose_x: float = 0.0,
     initial_pose_y: float = 0.0,
     initial_pose_a: float = 0.0, # Yaw Angle
     ## Localization Settings
     use_localization: bool = True,
     ## Map
-    use_map: bool = True,
+    use_map: bool = False,
     map_pkg: str = 'svea_core',
     map_name: str = 'sml',
     ## Low-Level Interface Settings
     lli_serial_device: str = '/dev/serial/by-id/usb-SVEA_PX4_AUTOPILOT_0-if00',
     lli_baud_rate: int = 921600,
     ## LiDAR Settings
-    use_lidar: bool = True,
+    use_lidar: bool = False,
     ## RTK-GPS Settings
     use_rtk: bool = True,
-    rtk_device: str = '/dev/ttyACM1',
+    rtk_device: str = '/dev/serial/by-id/usb-Arduino_LLC_Arduino_MKR_WiFi_1010_C5EE644B5150484347202020FF0E0B39-if00',
     rtk_baud: int = 115200,
     rtk_username: str = '',
     rtk_password: str = '',
