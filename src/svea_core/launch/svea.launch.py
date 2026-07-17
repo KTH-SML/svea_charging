@@ -24,12 +24,12 @@ def main(
     use_rtk: bool = True,
     rtk_device: str = '/dev/serial/by-id/usb-Arduino_LLC_Arduino_MKR_WiFi_1010_C5EE644B5150484347202020FF0E0B39-if00',
     rtk_baud: int = 115200,
-    rtk_username: str = '',
-    rtk_password: str = '',
+    rtk_username: str = 'ITRL03',
+    rtk_password: str = '171488',
     ## External Communication
     use_zenoh: bool = False,
     ## Foxglove
-    use_foxglove: bool = True,
+    use_foxglove: bool = False,
     use_urdf: bool = False,
 ):
     bl = BetterLaunch()
