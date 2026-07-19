@@ -64,7 +64,7 @@ def main(
         # Static Transforms
         bl.include("svea_localization", "transforms.launch.py",
                    name=name,
-                   use_gps=True,
+                   use_gps=use_rtk,
                    use_lidar=use_lidar,
                    map_frame=map_frame,
                    odom_frame=odom_frame,
@@ -119,19 +119,16 @@ def main(
                                 "odom_frame_id": odom_frame,
                                 "map_frame_id": map_frame})
 
-        else:
+        elif use_rtk:
 
             with bl.group(name):
-
-                if use_rtk:
-
-                    bl.include("svea_localization", "rtk.launch.py",
-                                device=rtk_device,
-                                baud=rtk_baud,
-                                gps_frame=f"{name}/gps",
-                                ntrip_namespace=f"{name}/gps",
-                                username=rtk_username,
-                                password=rtk_password)
+                bl.include("svea_localization", "rtk.launch.py",
+                           device=rtk_device,
+                           baud=rtk_baud,
+                           gps_frame=f"{name}/gps",
+                           ntrip_namespace=f"{name}/gps",
+                           username=rtk_username,
+                           password=rtk_password)
                     
                 # Start NavSat Transform Node
                 bl.node("robot_localization", "navsat_transform_node",
