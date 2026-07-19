@@ -87,9 +87,9 @@ class line_follower(rx.Node):
 
     crop_start_ratio = rx.Parameter(0.55)
     min_contour_area = rx.Parameter(120)
-    steering_kp = rx.Parameter(1.3)
-    steering_ki = rx.Parameter(.2)
-    steering_kd = rx.Parameter(0.01)
+    steering_kp = rx.Parameter(1.5)
+    steering_ki = rx.Parameter(.4)
+    steering_kd = rx.Parameter(0.02)
     steering_limit_rad = rx.Parameter(0.6)
     lost_line_steering_rad = rx.Parameter(0.0)
     velocity_scale_from_error = rx.Parameter(False)
@@ -230,7 +230,7 @@ class line_follower(rx.Node):
                 float(self.steering_limit_rad),
             )
         )
-        return steering + np.deg2rad(16.0)
+        return steering #+ np.deg2rad(16.0)
 
     def _calculate_velocity(self, normalized_error, dt):
         # Base velocity from line following
