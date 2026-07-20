@@ -103,6 +103,7 @@ class ChargingMissionTree:
         return NodeStatus.SUCCESS if self.bb.communication_ok else NodeStatus.FAILURE
 
     def handle_communication_error(self) -> str:
+        self.set_charging_arm(False)
         self.bb.active_controller = "idle"
         self.bb.mission_phase = "communication_error"
         return NodeStatus.FAILURE
@@ -138,8 +139,11 @@ class ChargingMissionTree:
         if self.bb.charger_visible and self.bb.line_visible:
             if self.bb.aruco_distance is not None and self.bb.aruco_distance <= 2.0:
                 self.set_charging_arm(True)
+            else:
+                self.set_charging_arm(False)
             return NodeStatus.RUNNING
 
+        self.set_charging_arm(False)
         return NodeStatus.FAILURE
 
     def _current_running_node_name(self) -> str:

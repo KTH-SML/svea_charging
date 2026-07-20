@@ -85,6 +85,7 @@ class bt_runner(rx.Node):
             charge_demo_duration_s=float(self.charge_demo_duration_s),
         )
         self.tree = ChargingMissionTree(self.bb, self._set_charging_arm)
+        self._set_charging_arm(False)
         period = 1.0 / self.tick_hz
         self.create_timer(period, self.loop)
         self.get_logger().info(

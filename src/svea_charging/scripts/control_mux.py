@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from std_msgs.msg import Float32, String
+from std_msgs.msg import Bool, Float32, String
 
 from rclpy.qos import (
     QoSDurabilityPolicy,
@@ -34,12 +34,19 @@ class control_mux(rx.Node):
     controller_timeout_s = rx.Parameter(0.3)
     output_hz = rx.Parameter(20.0)
     active_controller = rx.Parameter("idle")
+    charging_arm_topic = rx.Parameter("/charging_arm")
+    charging_arm_active_xtr1 = rx.Parameter(100.0)
+    charging_arm_inactive_xtr1 = rx.Parameter(0.0)
 
     actuation = ActuationInterface()
 
     @rx.Subscriber(String, "mission/active_controller", qos_pubber)
     def _active_controller_cb(self, msg: String):
         self.active_controller = msg.data
+
+    @rx.Subscriber(Bool, charging_arm_topic, qos_pubber)
+    def _charging_arm_cb(self, msg: Bool):
+        self.charging_arm_enabled = bool(msg.data)
 
     @rx.Subscriber(Float32, "stanley/cmd_steering_rad", qos_pubber)
     def _stanley_steering_cb(self, msg: Float32):
@@ -64,12 +71,19 @@ class control_mux(rx.Node):
     def on_startup(self):
         self.stanley_cmd = ControllerCommand()
         self.line_cmd = ControllerCommand()
+        self.charging_arm_enabled = False
         period = 1.0 / max(float(self.output_hz), 1.0)
         self.create_timer(period, self.loop)
         self.get_logger().info("Control mux started")
 
     def loop(self):
         cmd = self._get_selected_command()
+        xtr1 = (
+            float(self.charging_arm_active_xtr1)
+            if self.charging_arm_enabled
+            else float(self.charging_arm_inactive_xtr1)
+        )
+        self.actuation.send_xtr(xtr1=xtr1)
         self.actuation.send_control(cmd.steering, -1*cmd.velocity)
 
     def _get_selected_command(self) -> ControllerCommand:
