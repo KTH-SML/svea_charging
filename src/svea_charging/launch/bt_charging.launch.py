@@ -24,7 +24,7 @@ def main(
     aruco_loop_hz: float = 30.0,
     aruco_frame_id: str = "{name}/camera",
     aruco_use_aruco_detector_api: bool = False,
-    aruco_publish_debug_image: bool = True,
+    aruco_publish_debug_image: bool = False,
     aruco_jpeg_quality: int = 80,
     aruco_generate_marker_on_startup: bool = False,
     aruco_marker_id: int = 13,
@@ -33,7 +33,8 @@ def main(
     aruco_calibration_file: str = "",
     aruco_focal_length_px: float = -1.0,
     bt_switch_distance_m: float = 3.15,
-    bt_dock_distance_m: float = 1.63,
+    bt_dock_distance_m: float = 1.3587,
+    use_rtk: bool = False,
 ):
     bl = BetterLaunch()
 
@@ -51,7 +52,12 @@ def main(
                initial_pose_x=initial_pose_x,
                initial_pose_y=initial_pose_y,
                initial_pose_a=initial_pose_a,
-               use_foxglove=use_foxglove,)
+               # Mocap is the localization source indoors. Starting the EKFs as
+               # well makes their odometry callbacks require a map->odom TF that
+               # does not exist without the global (GPS) localization pipeline.
+               use_localization=not use_mocap,
+               use_foxglove=use_foxglove,
+               use_rtk=use_rtk,)
 
     with bl.group(name):
         if not is_sim:
@@ -66,7 +72,7 @@ def main(
                         image_height=480,
                         framerate=30.0,
                         camera_info_url=f"file://{aruco_calibration_file}",
-                        brightness=130,
+                        brightness=120,
                         gain=10,
                         auto_white_balance=False,
                         white_balance=4000,
