@@ -102,14 +102,20 @@ class line_follower(rx.Node):
     platform_transition_distance_m = rx.Parameter(0.91)
     ramp_min_velocity = rx.Parameter(0.35)
     approach_deceleration_mps2 = rx.Parameter(0.8)
-    dock_tolerance_m = rx.Parameter(0.03)
+    # Keep correcting until the behaviour tree detects charging. Set this above
+    # zero only if a stationary acceptance band is desired.
+    dock_tolerance_m = rx.Parameter(0.0)
     aruco_velocity_kp = rx.Parameter(0.35)
     aruco_velocity_ki = rx.Parameter(0.15)
     aruco_velocity_kd = rx.Parameter(0.0)
     aruco_velocity_integral_limit = rx.Parameter(0.3)
     aruco_max_backup_velocity = rx.Parameter(0.3)
-    aruco_min_backup_command = rx.Parameter(0.18)
+    aruco_min_forward_command = rx.Parameter(0.25)
+    aruco_min_backup_command = rx.Parameter(0.3)
     reverse_neutral_time_s = rx.Parameter(0.25)
+    dock_search_half_width_m = rx.Parameter(0.015)
+    dock_settle_time_s = rx.Parameter(0.30)
+    velocity_command_slew_mps2 = rx.Parameter(0.7)
     aruco_filter_window = rx.Parameter(5)
     aruco_timeout_s = rx.Parameter(0.5)
 
@@ -291,7 +297,7 @@ class line_follower(rx.Node):
         )
 
         tolerance = max(float(self.dock_tolerance_m), 0.0)
-        if abs(dist_error) <= tolerance:
+        if tolerance > 0.0 and abs(dist_error) <= tolerance:
             self._reset_velocity_controller()
             self._publish_velocity_debug(0.0, vel, dist_error, "docked")
             return 0.0
@@ -309,7 +315,26 @@ class line_follower(rx.Node):
             profile_speed = np.sqrt(
                 2.0 * deceleration * max(abs(dist_error) - tolerance, 0.0)
             )
-            if dist_error > 0.0:
+            search_half_width = max(float(self.dock_search_half_width_m), 0.0)
+            if self.dock_search_direction == 0:
+                self.dock_search_direction = 1 if dist_error >= 0.0 else -1
+            elif (
+                self.dock_search_direction > 0
+                and dist_error <= -search_half_width
+            ):
+                self._change_dock_search_direction(-1)
+            elif (
+                self.dock_search_direction < 0
+                and dist_error >= search_half_width
+            ):
+                self._change_dock_search_direction(1)
+
+            if self._now_s() < self.dock_settle_until_s:
+                self.previous_velocity_command = 0.0
+                self._publish_velocity_debug(0.0, vel, dist_error, "dock_settle")
+                return 0.0
+
+            if self.dock_search_direction > 0:
                 desired_velocity = min(base_velocity, profile_speed)
                 phase = "platform_approach"
             else:
@@ -347,25 +372,29 @@ class line_follower(rx.Node):
             )
         )
 
-        if desired_velocity < 0.0:
+        if phase == "platform_approach":
+            velocity_command = max(
+                velocity_command,
+                min(float(self.aruco_min_forward_command), forward_command_limit),
+            )
+        elif desired_velocity < 0.0:
             velocity_command = min(
                 velocity_command,
                 -min(float(self.aruco_min_backup_command), backup_velocity_limit),
             )
-            if (
-                self.last_desired_direction >= 0
-                and float(self.reverse_neutral_time_s) > 0.0
-            ):
-                self.reverse_allowed_after_s = (
-                    self._now_s() + float(self.reverse_neutral_time_s)
-                )
             self.last_desired_direction = -1
-            if self._now_s() < self.reverse_allowed_after_s:
-                velocity_command = 0.0
-                phase = "reverse_neutral"
         else:
             self.last_desired_direction = 1
-            self.reverse_allowed_after_s = 0.0
+
+        max_command_step = max(float(self.velocity_command_slew_mps2), 0.0) * dt
+        velocity_command = float(
+            np.clip(
+                velocity_command,
+                self.previous_velocity_command - max_command_step,
+                self.previous_velocity_command + max_command_step,
+            )
+        )
+        self.previous_velocity_command = velocity_command
 
         self._publish_velocity_debug(desired_velocity, vel, dist_error, phase)
         return velocity_command
@@ -374,7 +403,19 @@ class line_follower(rx.Node):
         self.aruco_velocity_integral = 0.0
         self.aruco_velocity_error_prev = 0.0
         self.last_desired_direction = 0
-        self.reverse_allowed_after_s = 0.0
+        self.dock_search_direction = 0
+        self.dock_settle_until_s = 0.0
+        self.previous_velocity_command = 0.0
+
+    def _change_dock_search_direction(self, direction):
+        self.dock_search_direction = 1 if direction > 0 else -1
+        self.aruco_velocity_integral = 0.0
+        self.aruco_velocity_error_prev = 0.0
+        settle_time = max(float(self.dock_settle_time_s), 0.0)
+        if self.dock_search_direction < 0:
+            settle_time = max(settle_time, float(self.reverse_neutral_time_s))
+        self.dock_settle_until_s = self._now_s() + settle_time
+        self.previous_velocity_command = 0.0
 
     def _publish_velocity_debug(
         self, desired_velocity, measured_velocity, distance_error, phase
