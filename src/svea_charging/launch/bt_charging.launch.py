@@ -19,7 +19,7 @@ def main(
     camera_image_topic: str = "image_raw",
     camera_frame_id: str = "{name}/camera",
     aruco_dictionary: str = "DICT_4X4_50",
-    aruco_marker_length_m: float = 0.365,
+    aruco_marker_length_m: float = 0.075,# 0.365,
     aruco_display: bool = False,
     aruco_loop_hz: float = 30.0,
     aruco_frame_id: str = "{name}/camera",
@@ -32,8 +32,8 @@ def main(
     aruco_output: str = "aruco_marker.png",
     aruco_calibration_file: str = "",
     aruco_focal_length_px: float = -1.0,
-    bt_switch_distance_m: float = 3.15,
-    bt_dock_distance_m: float = 1.3587,
+    bt_switch_distance_m: float = 2.25,
+    bt_dock_distance_m: float = 0.630997,
     use_rtk: bool = False,
 ):
     bl = BetterLaunch()
@@ -124,6 +124,7 @@ def main(
                     use_rviz=use_foxglove,
                     is_sim=is_sim,
                     image_topic=camera_image_topic,
+                    aruco_stop_distance_m=bt_dock_distance_m,
                 ))
 
         bl.node("svea_charging", "bt_runner.py",

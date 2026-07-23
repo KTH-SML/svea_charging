@@ -27,8 +27,8 @@
     <arg name="aruco_calibration_file" default="/svea_ws/src/svea_charging/params/camera.yaml"/>
     <arg name="aruco_focal_length_px" default="-1.0"/>
 
-    <arg name="bt_switch_distance_m" default="3.15"/>
-    <arg name="bt_dock_distance_m" default="1.63"/>
+    <arg name="bt_switch_distance_m" default="2.25"/>
+    <arg name="bt_dock_distance_m" default="0.630997"/>
 
     <include file="$(find-pkg-share svea_core)/launch/map_and_foxglove.xml">
         <arg name="map" value="$(var map)" />
@@ -78,6 +78,7 @@
             <param name="use_rviz" value="$(var use_foxglove)"/>
             <param name="is_sim" value="$(var is_sim)"/>
             <param name="image_topic" value="$(var camera_image_topic)"/>
+            <param name="aruco_stop_distance_m" value="$(var bt_dock_distance_m)"/>
         </node>
 
         <node name="bt_runner" pkg="svea_charging" exec="bt_runner.py" output="screen">

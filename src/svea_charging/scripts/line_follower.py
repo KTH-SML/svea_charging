@@ -96,7 +96,7 @@ class line_follower(rx.Node):
 
     use_aruco_stop = rx.Parameter(True)
     aruco_distance_topic = rx.Parameter("aruco/distance_m")
-    aruco_stop_distance_m = rx.Parameter(1.72)
+    aruco_stop_distance_m = rx.Parameter(0.630997)
     aruco_distance_kp = rx.Parameter(12.0)
     aruco_distance_ki = rx.Parameter(0.5)
     aruco_distance_kd = rx.Parameter(0.0)
