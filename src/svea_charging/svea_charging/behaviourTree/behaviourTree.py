@@ -26,7 +26,7 @@ class MissionBlackboard:
     dist_to_station: float | None = None
     aruco_distance: float | None = None
     switch_distance_m: float = 2.25
-    dock_distance_m: float = 0.630997
+    dock_distance_m: float = 0.622
     charge_done_level: float = 95.0
     charge_demo_duration_s: float = 10.0
     charge_started_at: float | None = None

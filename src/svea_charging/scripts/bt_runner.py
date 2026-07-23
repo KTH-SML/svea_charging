@@ -32,8 +32,8 @@ qos_pubber = QoSProfile(
 
 class bt_runner(rx.Node):
     tick_hz = rx.Parameter(20.0)
-    switch_distance_m = rx.Parameter(2.25)
-    dock_distance_m = rx.Parameter(0.630997)
+    switch_distance_m = rx.Parameter(2.3)
+    dock_distance_m = rx.Parameter(0.622)
     charge_done_level = rx.Parameter(95.0)
     charge_demo_duration_s = rx.Parameter(10.0)
     charging_arm_topic = rx.Parameter("/charging_arm")

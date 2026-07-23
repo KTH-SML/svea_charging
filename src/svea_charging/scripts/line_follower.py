@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from collections import deque
+
 import cv2
 import numpy as np
 import tf2_geometry_msgs  # Registers geometry message transforms with tf2.
@@ -96,17 +98,20 @@ class line_follower(rx.Node):
 
     use_aruco_stop = rx.Parameter(True)
     aruco_distance_topic = rx.Parameter("aruco/distance_m")
-    aruco_stop_distance_m = rx.Parameter(0.630997)
-    aruco_distance_kp = rx.Parameter(12.0)
-    aruco_distance_ki = rx.Parameter(0.5)
-    aruco_distance_kd = rx.Parameter(0.0)
-    aruco_velocity_kp = rx.Parameter(1.0)
-    aruco_velocity_ki = rx.Parameter(0.0)
+    aruco_stop_distance_m = rx.Parameter(0.622)
+    platform_transition_distance_m = rx.Parameter(0.91)
+    ramp_min_velocity = rx.Parameter(0.35)
+    approach_deceleration_mps2 = rx.Parameter(0.8)
+    dock_tolerance_m = rx.Parameter(0.03)
+    aruco_velocity_kp = rx.Parameter(0.35)
+    aruco_velocity_ki = rx.Parameter(0.15)
     aruco_velocity_kd = rx.Parameter(0.0)
-    aruco_max_backup_velocity = rx.Parameter(0.35)
-    aruco_overshoot_deadband_m = rx.Parameter(0.2)
-
-    aruco_distance_integral_limit = rx.Parameter(2.0)
+    aruco_velocity_integral_limit = rx.Parameter(0.3)
+    aruco_max_backup_velocity = rx.Parameter(0.3)
+    aruco_min_backup_command = rx.Parameter(0.18)
+    reverse_neutral_time_s = rx.Parameter(0.25)
+    aruco_filter_window = rx.Parameter(5)
+    aruco_timeout_s = rx.Parameter(0.5)
 
     localizer = LineFollowerLocalizationInterface()
 
@@ -116,14 +121,30 @@ class line_follower(rx.Node):
     status_pub = rx.Publisher(String, "line_follower/status")
     centroid_pub = rx.Publisher(Point, "line_follower/centroid")
     debug_image_pub = rx.Publisher(Image, debug_image_topic)
+    desired_velocity_pub = rx.Publisher(
+        Float32, "line_follower/desired_velocity_mps"
+    )
+    measured_velocity_pub = rx.Publisher(
+        Float32, "line_follower/measured_velocity_mps"
+    )
+    distance_error_pub = rx.Publisher(Float32, "line_follower/distance_error_m")
+    velocity_phase_pub = rx.Publisher(String, "line_follower/velocity_phase")
 
     @rx.Subscriber(Float32, aruco_distance_topic)
     def _aruco_distance_callback(self, msg: Float32):
-        self.aruco_distance = float(msg.data)
+        distance = float(msg.data)
+        if np.isfinite(distance) and distance > 0.0:
+            self.aruco_distance_samples.append(distance)
+            self.aruco_distance = float(np.median(self.aruco_distance_samples))
+            self.aruco_distance_stamp_s = self._now_s()
 
     @rx.Subscriber(String, 'mission/active_controller', qos_pubber)
     def _mission_active(self, msg: String):
+        was_active = self.active_controller == str(self.controller_name)
         self.active_controller = msg.data
+        is_active = self.active_controller == str(self.controller_name)
+        if was_active != is_active:
+            self._reset_velocity_controller()
 
     def on_startup(self):
         self.bridge = CvBridge()
@@ -132,19 +153,16 @@ class line_follower(rx.Node):
         self.latest_centroid = None
         self.line_detected = False
         self.aruco_distance = -1.0
+        self.aruco_distance_stamp_s = -1.0
+        self.aruco_distance_samples = deque(
+            maxlen=max(int(self.aruco_filter_window), 1)
+        )
         self.debug_publish_counter = 0
         
         self.steering_error_prev = 0.0
         self.steering_error_integral = 0.0
 
-        self.aruco_distance_error_prev = 0.0
-        self.aruco_distance_integral = 0.0
-        self.aruco_velocity_integral = 0.0
-        self.aruco_velocity_error_prev = 0.0
-        self.position_prev = 0.0
-
-        self.position_prev = 0.0
-        self.vel_error_prev = 0.0
+        self._reset_velocity_controller()
 
         self.create_subscription(
             Image,
@@ -244,68 +262,61 @@ class line_follower(rx.Node):
         )
 
         if not bool(self.use_aruco_stop):
-            self.aruco_distance_error_prev = 0.0
-            self.aruco_distance_integral = 0.0
-            self.aruco_velocity_error_prev = 0.0
-            self.aruco_velocity_integral = 0.0
-            self.position_prev = 0.0
+            self._reset_velocity_controller()
+            self._publish_velocity_debug(base_velocity, 0.0, 0.0, "tracking")
             return base_velocity
 
-        if self.aruco_distance <= 0.0:
-            self.aruco_distance_error_prev = 0.0
-            self.aruco_distance_integral = 0.0
-            self.aruco_velocity_error_prev = 0.0
-            self.aruco_velocity_integral = 0.0
-            self.position_prev = 0.0
+        aruco_is_fresh = (
+            self.aruco_distance > 0.0
+            and self.aruco_distance_stamp_s > 0.0
+            and self._now_s() - self.aruco_distance_stamp_s
+            <= max(float(self.aruco_timeout_s), 0.0)
+        )
+        if not aruco_is_fresh and self.aruco_distance <= 0.0:
+            self._reset_velocity_controller()
+            self._publish_velocity_debug(base_velocity, 0.0, 0.0, "tracking")
             return base_velocity
+        if not aruco_is_fresh:
+            self._reset_velocity_controller()
+            self._publish_velocity_debug(0.0, 0.0, 0.0, "aruco_stale")
+            return 0.0
 
         ref_dist = float(self.aruco_stop_distance_m)
         dist = float(self.aruco_distance)
         dist_error = dist - ref_dist
-        prev_dist_error = float(self.aruco_distance_error_prev)
-        overshoot_deadband = max(float(self.aruco_overshoot_deadband_m), 0.0)
-
-        crossed_target = (
-            abs(prev_dist_error) > overshoot_deadband
-            and abs(dist_error) > overshoot_deadband
-            and np.sign(prev_dist_error) != np.sign(dist_error)
-        )
-        if crossed_target:
-            self.aruco_distance_integral = 0.0
-            self.aruco_velocity_integral = 0.0
-            self.aruco_velocity_error_prev = 0.0
-
-        # PID control for distance
-        error_i = (dist_error + prev_dist_error) / 2.0 * dt
-        error_d = (dist_error - prev_dist_error) / max(dt, 1e-6)
-        self.aruco_distance_integral += error_i
-        self.aruco_distance_integral = float(
-            np.clip(
-                self.aruco_distance_integral,
-                -float(self.aruco_distance_integral_limit),
-                float(self.aruco_distance_integral_limit),
-            )
-        )
-        self.aruco_distance_error_prev = float(dist_error)
-
-        desired_velocity = (
-            float(self.aruco_distance_kp) * dist_error
-            + float(self.aruco_distance_ki) * self.aruco_distance_integral
-            + float(self.aruco_distance_kd) * error_d
-        )
+        _, _, _, vel = self.localizer.get_state()
         backup_velocity_limit = min(
             float(self.max_velocity),
             float(self.aruco_max_backup_velocity),
         )
-        desired_velocity = float(
-            np.clip(
-                desired_velocity,
-                -backup_velocity_limit,
-                base_velocity,
-            )
-        )
 
-        _, _, _, vel = self.localizer.get_state()
+        tolerance = max(float(self.dock_tolerance_m), 0.0)
+        if abs(dist_error) <= tolerance:
+            self._reset_velocity_controller()
+            self._publish_velocity_debug(0.0, vel, dist_error, "docked")
+            return 0.0
+
+        if dist >= float(self.platform_transition_distance_m):
+            desired_velocity = max(
+                base_velocity,
+                min(float(self.ramp_min_velocity), float(self.max_velocity)),
+            )
+            desired_velocity = min(desired_velocity, float(self.max_velocity))
+            forward_command_limit = float(self.max_velocity)
+            phase = "ramp"
+        else:
+            deceleration = max(float(self.approach_deceleration_mps2), 1e-3)
+            profile_speed = np.sqrt(
+                2.0 * deceleration * max(abs(dist_error) - tolerance, 0.0)
+            )
+            if dist_error > 0.0:
+                desired_velocity = min(base_velocity, profile_speed)
+                phase = "platform_approach"
+            else:
+                desired_velocity = -min(backup_velocity_limit, profile_speed)
+                phase = "overshoot_recovery"
+            forward_command_limit = base_velocity
+
         vel_error = desired_velocity - vel
 
         # PID control for velocity
@@ -315,29 +326,66 @@ class line_follower(rx.Node):
         self.aruco_velocity_integral = float(
             np.clip(
                 self.aruco_velocity_integral,
-                -float(self.aruco_distance_integral_limit),
-                float(self.aruco_distance_integral_limit),
+                -float(self.aruco_velocity_integral_limit),
+                float(self.aruco_velocity_integral_limit),
             )
         )
 
-        velocity = (
-            float(self.aruco_velocity_kp) * vel_error
+        velocity_command = (
+            desired_velocity
+            + float(self.aruco_velocity_kp) * vel_error
             + float(self.aruco_velocity_ki) * self.aruco_velocity_integral
             + float(self.aruco_velocity_kd) * error_vel_d
         )
 
         self.aruco_velocity_error_prev = float(vel_error)
-        self.position_prev = float(dist_error)
-
-        velocity = float(
+        velocity_command = float(
             np.clip(
-                velocity,
+                velocity_command,
                 -backup_velocity_limit,
-                base_velocity,
+                forward_command_limit,
             )
         )
-        # self.get_logger().info(f"Desired velocity: {desired_velocity:.2f} m/s, Velocity: {velocity:.2f} m/s")
-        return velocity
+
+        if desired_velocity < 0.0:
+            velocity_command = min(
+                velocity_command,
+                -min(float(self.aruco_min_backup_command), backup_velocity_limit),
+            )
+            if (
+                self.last_desired_direction >= 0
+                and float(self.reverse_neutral_time_s) > 0.0
+            ):
+                self.reverse_allowed_after_s = (
+                    self._now_s() + float(self.reverse_neutral_time_s)
+                )
+            self.last_desired_direction = -1
+            if self._now_s() < self.reverse_allowed_after_s:
+                velocity_command = 0.0
+                phase = "reverse_neutral"
+        else:
+            self.last_desired_direction = 1
+            self.reverse_allowed_after_s = 0.0
+
+        self._publish_velocity_debug(desired_velocity, vel, dist_error, phase)
+        return velocity_command
+
+    def _reset_velocity_controller(self):
+        self.aruco_velocity_integral = 0.0
+        self.aruco_velocity_error_prev = 0.0
+        self.last_desired_direction = 0
+        self.reverse_allowed_after_s = 0.0
+
+    def _publish_velocity_debug(
+        self, desired_velocity, measured_velocity, distance_error, phase
+    ):
+        self.desired_velocity_pub.publish(Float32(data=float(desired_velocity)))
+        self.measured_velocity_pub.publish(Float32(data=float(measured_velocity)))
+        self.distance_error_pub.publish(Float32(data=float(distance_error)))
+        self.velocity_phase_pub.publish(String(data=str(phase)))
+
+    def _now_s(self):
+        return self.get_clock().now().nanoseconds * 1e-9
 
     def loop(self):
         if self.active_controller != str(self.controller_name):

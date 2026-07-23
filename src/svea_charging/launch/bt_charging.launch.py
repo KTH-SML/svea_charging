@@ -32,8 +32,8 @@ def main(
     aruco_output: str = "aruco_marker.png",
     aruco_calibration_file: str = "",
     aruco_focal_length_px: float = -1.0,
-    bt_switch_distance_m: float = 2.25,
-    bt_dock_distance_m: float = 0.630997,
+    bt_switch_distance_m: float = 2.3,
+    bt_dock_distance_m: float = 0.622,
     use_rtk: bool = False,
 ):
     bl = BetterLaunch()
