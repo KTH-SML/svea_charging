@@ -27,7 +27,8 @@
     <arg name="aruco_calibration_file" default="/svea_ws/src/svea_charging/params/camera.yaml"/>
     <arg name="aruco_focal_length_px" default="-1.0"/>
 
-    <arg name="bt_switch_distance_m" default="2.25"/>
+    <arg name="bt_switch_distance_m" default="2.5"/>
+    <arg name="bt_docking_exit_distance_m" default="2.75"/>
     <arg name="bt_dock_distance_m" default="0.630997"/>
 
     <include file="$(find-pkg-share svea_core)/launch/map_and_foxglove.xml">
@@ -83,6 +84,7 @@
 
         <node name="bt_runner" pkg="svea_charging" exec="bt_runner.py" output="screen">
             <param name="switch_distance_m" value="$(var bt_switch_distance_m)"/>
+            <param name="docking_exit_distance_m" value="$(var bt_docking_exit_distance_m)"/>
             <param name="dock_distance_m" value="$(var bt_dock_distance_m)"/>
         </node>
 
@@ -159,6 +161,7 @@
 
         <node name="bt_runner" pkg="svea_charging" exec="bt_runner.py" output="screen">
             <param name="switch_distance_m" value="$(var bt_switch_distance_m)"/>
+            <param name="docking_exit_distance_m" value="$(var bt_docking_exit_distance_m)"/>
             <param name="dock_distance_m" value="$(var bt_dock_distance_m)"/>
         </node>
 

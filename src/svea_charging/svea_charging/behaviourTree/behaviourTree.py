@@ -25,7 +25,8 @@ class MissionBlackboard:
     charging_error: bool = False
     dist_to_station: float | None = None
     aruco_distance: float | None = None
-    switch_distance_m: float = 2.25
+    switch_distance_m: float = 2.5
+    docking_exit_distance_m: float = 2.75
     dock_distance_m: float = 0.622
     charge_done_level: float = 95.0
     charge_demo_duration_s: float = 10.0
@@ -110,6 +111,13 @@ class ChargingMissionTree:
 
     def is_near_docking_zone(self) -> str:
         distance = self.bb.aruco_distance
+        if self.bb.active_controller == "line_follower":
+            if distance is None or distance <= self.bb.docking_exit_distance_m:
+                self.bb.mission_phase = "docking"
+                return NodeStatus.SUCCESS
+            self.bb.mission_phase = "approach"
+            return NodeStatus.FAILURE
+
         if distance is None:
             return NodeStatus.FAILURE
         if distance <= self.bb.switch_distance_m:

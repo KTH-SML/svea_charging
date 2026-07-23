@@ -32,7 +32,8 @@ def main(
     aruco_output: str = "aruco_marker.png",
     aruco_calibration_file: str = "",
     aruco_focal_length_px: float = -1.0,
-    bt_switch_distance_m: float = 2.3,
+    bt_switch_distance_m: float = 2.5,
+    bt_docking_exit_distance_m: float = 2.75,
     bt_dock_distance_m: float = 0.622,
     use_rtk: bool = False,
 ):
@@ -131,6 +132,7 @@ def main(
                 name="bt_runner",
                 params=dict(
                     switch_distance_m=bt_switch_distance_m,
+                    docking_exit_distance_m=bt_docking_exit_distance_m,
                     dock_distance_m=bt_dock_distance_m,
                 ))
 

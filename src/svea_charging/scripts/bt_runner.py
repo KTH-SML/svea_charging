@@ -32,7 +32,8 @@ qos_pubber = QoSProfile(
 
 class bt_runner(rx.Node):
     tick_hz = rx.Parameter(20.0)
-    switch_distance_m = rx.Parameter(2.3)
+    switch_distance_m = rx.Parameter(2.5)
+    docking_exit_distance_m = rx.Parameter(2.75)
     dock_distance_m = rx.Parameter(0.622)
     charge_done_level = rx.Parameter(95.0)
     charge_demo_duration_s = rx.Parameter(10.0)
@@ -80,6 +81,7 @@ class bt_runner(rx.Node):
     def on_startup(self):
         self.bb = MissionBlackboard(
             switch_distance_m=float(self.switch_distance_m),
+            docking_exit_distance_m=float(self.docking_exit_distance_m),
             dock_distance_m=float(self.dock_distance_m),
             charge_done_level=float(self.charge_done_level),
             charge_demo_duration_s=float(self.charge_demo_duration_s),
@@ -90,7 +92,9 @@ class bt_runner(rx.Node):
         self.create_timer(period, self.loop)
         self.get_logger().info(
             "BT runner started "
-            f"(switch={self.bb.switch_distance_m:.2f} m, dock={self.bb.dock_distance_m:.2f} m, "
+            f"(switch={self.bb.switch_distance_m:.2f} m, "
+            f"exit={self.bb.docking_exit_distance_m:.2f} m, "
+            f"dock={self.bb.dock_distance_m:.2f} m, "
             f"charge_demo={self.bb.charge_demo_duration_s:.1f} s, "
             f"charge_done={self.bb.charge_done_level:.1f}%)"
         )
