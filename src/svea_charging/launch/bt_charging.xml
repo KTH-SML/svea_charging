@@ -27,8 +27,12 @@
     <arg name="aruco_calibration_file" default="/svea_ws/src/svea_charging/params/camera.yaml"/>
     <arg name="aruco_focal_length_px" default="-1.0"/>
 
-    <arg name="bt_switch_distance_m" default="2.25"/>
+    <arg name="bt_switch_distance_m" default="2.5"/>
+    <arg name="bt_docking_exit_distance_m" default="2.75"/>
     <arg name="bt_dock_distance_m" default="0.630997"/>
+    <arg name="bt_charge_start_voltage" default="12.2"/>
+    <arg name="bt_charge_done_voltage" default="12.6"/>
+    <arg name="bt_charge_voltage_confirm_s" default="3.0"/>
 
     <include file="$(find-pkg-share svea_core)/launch/map_and_foxglove.xml">
         <arg name="map" value="$(var map)" />
@@ -83,7 +87,11 @@
 
         <node name="bt_runner" pkg="svea_charging" exec="bt_runner.py" output="screen">
             <param name="switch_distance_m" value="$(var bt_switch_distance_m)"/>
+            <param name="docking_exit_distance_m" value="$(var bt_docking_exit_distance_m)"/>
             <param name="dock_distance_m" value="$(var bt_dock_distance_m)"/>
+            <param name="charge_start_voltage" value="$(var bt_charge_start_voltage)"/>
+            <param name="charge_done_voltage" value="$(var bt_charge_done_voltage)"/>
+            <param name="charge_voltage_confirm_s" value="$(var bt_charge_voltage_confirm_s)"/>
         </node>
 
         <node name="control_mux" pkg="svea_charging" exec="control_mux.py" output="screen">
@@ -159,7 +167,11 @@
 
         <node name="bt_runner" pkg="svea_charging" exec="bt_runner.py" output="screen">
             <param name="switch_distance_m" value="$(var bt_switch_distance_m)"/>
+            <param name="docking_exit_distance_m" value="$(var bt_docking_exit_distance_m)"/>
             <param name="dock_distance_m" value="$(var bt_dock_distance_m)"/>
+            <param name="charge_start_voltage" value="$(var bt_charge_start_voltage)"/>
+            <param name="charge_done_voltage" value="$(var bt_charge_done_voltage)"/>
+            <param name="charge_voltage_confirm_s" value="$(var bt_charge_voltage_confirm_s)"/>
         </node>
 
         <node name="control_mux" pkg="svea_charging" exec="control_mux.py" output="screen">

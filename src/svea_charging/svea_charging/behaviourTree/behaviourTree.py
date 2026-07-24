@@ -15,9 +15,8 @@ from svea_charging.third_party.btree.btree import (
 
 @dataclass
 class MissionBlackboard:
-    battery_level: float = 20.0
     battery_current: float = -1.0
-    battery_voltage: float = 12.0
+    battery_voltage: float | None = None
     communication_ok: bool = True
     charger_visible: bool = False
     line_visible: bool = False
@@ -25,12 +24,13 @@ class MissionBlackboard:
     charging_error: bool = False
     dist_to_station: float | None = None
     aruco_distance: float | None = None
-    switch_distance_m: float = 2.25
-    dock_distance_m: float = 0.630997
-    charge_done_level: float = 95.0
-    charge_demo_duration_s: float = 10.0
-    charge_started_at: float | None = None
-    charge_demo_complete: bool = False
+    switch_distance_m: float = 2.5
+    docking_exit_distance_m: float = 2.75
+    dock_distance_m: float = 0.622
+    charge_start_voltage: float = 12.2
+    charge_done_voltage: float = 12.6
+    charge_voltage_confirm_s: float = 3.0
+    charge_voltage_reached_at: float | None = None
     active_controller: str = "stanley"
     mission_phase: str = "approach"
     last_tree_status: str = NodeStatus.RUNNING
@@ -110,6 +110,13 @@ class ChargingMissionTree:
 
     def is_near_docking_zone(self) -> str:
         distance = self.bb.aruco_distance
+        if self.bb.active_controller == "line_follower":
+            if distance is None or distance <= self.bb.docking_exit_distance_m:
+                self.bb.mission_phase = "docking"
+                return NodeStatus.SUCCESS
+            self.bb.mission_phase = "approach"
+            return NodeStatus.FAILURE
+
         if distance is None:
             return NodeStatus.FAILURE
         if distance <= self.bb.switch_distance_m:
@@ -123,12 +130,10 @@ class ChargingMissionTree:
         return NodeStatus.RUNNING
 
     def is_docked(self) -> str:
-        if self.bb.battery_current > -0.98:
+        if self.bb.battery_current > 0.0:
             self.bb.active_controller = "idle"
             self.bb.mission_phase = "docked"
             self.bb.charging_active = True
-            if self.bb.charge_started_at is None:
-                self.bb.charge_started_at = time.monotonic()
             return NodeStatus.SUCCESS
         return NodeStatus.FAILURE
 
@@ -162,18 +167,36 @@ class ChargingMissionTree:
         return deeper if deeper is not None else current
 
     def needs_charging(self) -> str:
-        if self.bb.battery_level < self.bb.charge_done_level:
+        if (
+            self.bb.charging_active
+            or self.bb.battery_voltage is None
+            or self.bb.battery_voltage < self.bb.charge_start_voltage
+        ):
             return NodeStatus.SUCCESS
         self.bb.active_controller = "idle"
         self.bb.mission_phase = "charge_not_needed"
         return NodeStatus.FAILURE
 
     def is_charged(self) -> str:
-        if self.bb.battery_level >= self.bb.charge_done_level:
+        voltage = self.bb.battery_voltage
+        if voltage is None or voltage < self.bb.charge_done_voltage:
+            self.bb.charge_voltage_reached_at = None
+            return NodeStatus.FAILURE
+
+        if self.bb.charge_voltage_reached_at is None:
+            self.bb.charge_voltage_reached_at = time.monotonic()
+            return NodeStatus.FAILURE
+
+        if (
+            time.monotonic() - self.bb.charge_voltage_reached_at
+            < self.bb.charge_voltage_confirm_s
+        ):
+            return NodeStatus.FAILURE
+
+        if voltage >= self.bb.charge_done_voltage:
             self.bb.active_controller = "idle"
             self.bb.mission_phase = "charged"
             self.bb.charging_active = False
-            self.bb.charge_demo_complete = True
             return NodeStatus.SUCCESS
         return NodeStatus.FAILURE
 
@@ -183,18 +206,11 @@ class ChargingMissionTree:
         self.bb.active_controller = "idle"
         self.bb.mission_phase = "charging"
         self.bb.charging_active = True
-        if self.bb.charge_started_at is None:
-            self.bb.charge_started_at = time.monotonic()
-        elapsed_s = time.monotonic() - self.bb.charge_started_at
-        if elapsed_s >= self.bb.charge_demo_duration_s:
-            self.bb.battery_level = self.bb.charge_done_level
-            self.bb.charge_demo_complete = True
-            return self.is_charged()
         return NodeStatus.RUNNING
 
     def exit_station(self) -> str:
         self.set_charging_arm(False)
         self.bb.active_controller = "stanley"
         self.bb.mission_phase = "exit_station"
-        self.bb.charge_started_at = None
+        self.bb.charge_voltage_reached_at = None
         return NodeStatus.RUNNING

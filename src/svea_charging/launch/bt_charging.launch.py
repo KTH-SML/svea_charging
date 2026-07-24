@@ -32,8 +32,12 @@ def main(
     aruco_output: str = "aruco_marker.png",
     aruco_calibration_file: str = "",
     aruco_focal_length_px: float = -1.0,
-    bt_switch_distance_m: float = 2.25,
-    bt_dock_distance_m: float = 0.630997,
+    bt_dock_distance_m: float = 0.617,
+    bt_switch_distance_m: float = 2.2, #bt_dock_distance_m * 3.6
+    bt_docking_exit_distance_m: float = 2.75,
+    bt_charge_start_voltage: float = 12.2,
+    bt_charge_done_voltage: float = 12.6,
+    bt_charge_voltage_confirm_s: float = 3.0,
     use_rtk: bool = False,
 ):
     bl = BetterLaunch()
@@ -131,7 +135,11 @@ def main(
                 name="bt_runner",
                 params=dict(
                     switch_distance_m=bt_switch_distance_m,
+                    docking_exit_distance_m=bt_docking_exit_distance_m,
                     dock_distance_m=bt_dock_distance_m,
+                    charge_start_voltage=bt_charge_start_voltage,
+                    charge_done_voltage=bt_charge_done_voltage,
+                    charge_voltage_confirm_s=bt_charge_voltage_confirm_s,
                 ))
 
         bl.node("svea_charging", "control_mux.py",
