@@ -9,6 +9,7 @@ def main(
     initial_pose_x: float = 0.0,
     initial_pose_y: float = 0.0,
     initial_pose_a: float = 0.0, # Yaw Angle
+    use_imu_yaw_rate: bool = True,
     ## Localization Settings
     use_localization: bool = True,
     ## Map
@@ -26,6 +27,10 @@ def main(
     rtk_baud: int = 115200,
     rtk_username: str = 'ITRL03',
     rtk_password: str = '171488',
+    use_datum: bool = False,
+    datum_service: str = 'datum',
+    datum_file: str = '',
+    datum_data: str = '[]',
     ## External Communication
     use_zenoh: bool = False,
     ## Foxglove
@@ -43,6 +48,7 @@ def main(
                    initial_pose_x=initial_pose_x,
                    initial_pose_y=initial_pose_y,
                    initial_pose_a=initial_pose_a,
+                   use_imu_yaw_rate=use_imu_yaw_rate,
                    use_map=use_map,
                    map_pkg=map_pkg,
                    map_name=map_name,
@@ -51,7 +57,11 @@ def main(
                    rtk_device=rtk_device,
                    rtk_baud=rtk_baud,
                    rtk_username=rtk_username,
-                   rtk_password=rtk_password)
+                   rtk_password=rtk_password,
+                   use_datum=use_datum,
+                   datum_service=datum_service,
+                   datum_file=datum_file,
+                   datum_data=datum_data)
 
     if is_sim:
 
@@ -94,4 +104,3 @@ def main(
     if use_urdf:
         bl.include("svea_core", "visualization.launch.py",
                    name=name)
-

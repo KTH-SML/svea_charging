@@ -8,10 +8,12 @@ fixed sequence of waypoints in the outdoor ``map`` frame.
 
 import ast
 import math
+from collections import deque
 
 from nav_msgs.msg import Odometry
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import NavSatFix, NavSatStatus
+from std_msgs.msg import Float64, UInt8
 from tf_transformations import euler_from_quaternion
 
 from svea_charging.controllers.stanleyController import StanleyController
@@ -32,6 +34,12 @@ class OutdoorStanley(rx.Node):
     minimum_turning_radius = rx.Parameter(0.40)
     odometry_timeout_s = rx.Parameter(0.30)
     gps_timeout_s = rx.Parameter(2.50)
+    rtk_timeout_s = rx.Parameter(2.50)
+    require_rtk_fixed = rx.Parameter(True)
+    rtk_fixed_settle_s = rx.Parameter(10.0)
+    max_horizontal_accuracy = rx.Parameter(0.50)
+    localization_settle_s = rx.Parameter(10.0)
+    max_settle_position_spread = rx.Parameter(0.20)
 
     # Fixed [x, y] positions in the outdoor global EKF's map frame.
     map_waypoints = rx.Parameter(
@@ -40,6 +48,8 @@ class OutdoorStanley(rx.Node):
     )
     odometry_topic = rx.Parameter("odometry/global")
     gps_topic = rx.Parameter("gps/fix")
+    carrier_solution_topic = rx.Parameter("gps/carrier_solution")
+    horizontal_accuracy_topic = rx.Parameter("gps/horizontal_accuracy")
 
     actuation = ActuationInterface()
 
@@ -54,20 +64,47 @@ class OutdoorStanley(rx.Node):
             float(msg.twist.twist.linear.x),
         )
         self.last_odom_s = self._now_s()
+        samples = getattr(self, "settle_samples", None)
+        if samples is not None and not getattr(self, "path_ready", False):
+            samples.append((self.last_odom_s, self.state[0], self.state[1]))
 
     @rx.Subscriber(NavSatFix, gps_topic, qos_profile=qos_profile_sensor_data)
     def _gps_cb(self, msg: NavSatFix):
         if msg.status.status >= NavSatStatus.STATUS_FIX:
             self.last_gps_s = self._now_s()
 
+    @rx.Subscriber(UInt8, carrier_solution_topic)
+    def _carrier_solution_cb(self, msg: UInt8):
+        now = self._now_s()
+        new_solution = int(msg.data)
+        if new_solution == 2:
+            if self.carrier_solution != 2:
+                self.rtk_fixed_since = now
+        else:
+            self.rtk_fixed_since = None
+        self.carrier_solution = new_solution
+        self.last_rtk_s = now
+
+    @rx.Subscriber(Float64, horizontal_accuracy_topic)
+    def _horizontal_accuracy_cb(self, msg: Float64):
+        self.horizontal_accuracy = float(msg.data)
+        self.last_accuracy_s = self._now_s()
+
     def on_startup(self):
         self.state = None
         self.last_odom_s = None
         self.last_gps_s = None
+        self.last_rtk_s = None
+        self.carrier_solution = None
+        self.rtk_fixed_since = None
+        self.horizontal_accuracy = None
+        self.last_accuracy_s = None
+        self.settle_samples = deque(maxlen=2000)
         self.path_ready = False
         self.finished = False
         self.route_error = None
         self.stop_reason = None
+        self.was_enabled = self._enabled_now()
         self.controller = StanleyController(node=self)
         self.controller.target_velocity = float(self.target_velocity)
         self.waypoints = self._parse_waypoints(str(self.map_waypoints))
@@ -81,7 +118,7 @@ class OutdoorStanley(rx.Node):
         period = 1.0 / max(float(self.update_hz), 1.0)
         self.create_timer(period, self.loop)
         self.get_logger().warn(
-            "Outdoor Stanley is DISABLED" if not bool(self.enabled)
+            "Outdoor Stanley is DISABLED" if not self.was_enabled
             else "Outdoor Stanley is ENABLED; waiting for fresh GPS and global odometry"
         )
 
@@ -119,11 +156,23 @@ class OutdoorStanley(rx.Node):
         # A disabled observer must not compete with manual control or another
         # controller for the LLI. Once enabled, every inhibit condition sends
         # an explicit stop command.
-        if not bool(self.enabled):
+        enabled = self._enabled_now()
+        if not enabled:
+            # Do not publish while the node starts disabled, so it cannot
+            # compete with manual control. If it is disabled at runtime after
+            # having been active, send one explicit stop before going silent.
+            if self.was_enabled:
+                self.actuation.send_control(0.0, 0.0)
             if self.stop_reason != "disabled":
                 self.get_logger().warn("Outdoor Stanley inactive: disabled")
                 self.stop_reason = "disabled"
+            self.was_enabled = False
             return
+        if not self.was_enabled:
+            self.get_logger().warn(
+                "Outdoor Stanley enabled at runtime; applying safety checks"
+            )
+        self.was_enabled = True
 
         reason = self._inhibit_reason()
         if reason is not None:
@@ -152,9 +201,29 @@ class OutdoorStanley(rx.Node):
             return "global odometry stale"
         if self.last_gps_s is None or now - self.last_gps_s > float(self.gps_timeout_s):
             return "GPS fix stale or unavailable"
+        if bool(self.require_rtk_fixed):
+            if self.last_rtk_s is None or now - self.last_rtk_s > float(self.rtk_timeout_s):
+                return "RTK status stale or unavailable"
+            if self.carrier_solution != 2:
+                return f"RTK is not fixed (carrSoln={self.carrier_solution})"
+            if (
+                self.rtk_fixed_since is None
+                or now - self.rtk_fixed_since < float(self.rtk_fixed_settle_s)
+            ):
+                return "waiting for RTK fixed to stabilize"
+        if self.last_accuracy_s is None or now - self.last_accuracy_s > float(self.gps_timeout_s):
+            return "GPS horizontal accuracy stale or unavailable"
+        if self.horizontal_accuracy > float(self.max_horizontal_accuracy):
+            return (
+                f"GPS horizontal accuracy too poor "
+                f"({self.horizontal_accuracy:.2f} m)"
+            )
         if self.route_error is not None:
             return self.route_error
         if not self.path_ready:
+            settle_reason = self._settling_reason(now)
+            if settle_reason is not None:
+                return settle_reason
             start_distance = math.hypot(
                 self.state[0] - self.start[0], self.state[1] - self.start[1]
             )
@@ -169,6 +238,20 @@ class OutdoorStanley(rx.Node):
         cross_track_distance = self._distance_to_trajectory()
         if cross_track_distance > float(self.corridor_width):
             return f"outside path corridor ({cross_track_distance:.2f} m)"
+        return None
+
+    def _settling_reason(self, now):
+        required_duration = float(self.localization_settle_s)
+        cutoff = now - required_duration
+        while self.settle_samples and self.settle_samples[0][0] < cutoff:
+            self.settle_samples.popleft()
+        if not self.settle_samples or now - self.settle_samples[0][0] < required_duration * 0.95:
+            return "waiting for localization to settle"
+        xs = [sample[1] for sample in self.settle_samples]
+        ys = [sample[2] for sample in self.settle_samples]
+        spread = math.hypot(max(xs) - min(xs), max(ys) - min(ys))
+        if spread > float(self.max_settle_position_spread):
+            return f"localization not stable ({spread:.2f} m spread)"
         return None
 
     def _distance_to_trajectory(self):
@@ -200,6 +283,10 @@ class OutdoorStanley(rx.Node):
 
     def _now_s(self):
         return self.get_clock().now().nanoseconds * 1e-9
+
+    def _enabled_now(self):
+        """Read the live ROS value; rx.Parameter caches its startup value."""
+        return bool(self.get_parameter("enabled").value)
 
 
 if __name__ == "__main__":

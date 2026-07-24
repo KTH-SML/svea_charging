@@ -9,6 +9,7 @@ def main(
     initial_pose_x: float = 0.0,
     initial_pose_y: float = 0.0,
     initial_pose_a: float = 0.0,
+    use_imu_yaw_rate: bool = True,
     # Map
     use_map: bool = True,
     map_pkg: str = 'svea_core',
@@ -29,7 +30,7 @@ def main(
     rtk_password: str = '',
     # Datum Settings
     use_datum: bool = False,
-    datum_service: str = '/datum',
+    datum_service: str = 'datum',
     datum_file: str = '',
     datum_data: str = '[]',
 ):
@@ -49,6 +50,13 @@ def main(
         0.0, 0.0, 0.0,
         0.0, 0.0, 0.0,
         0.0, 0.0, 0.0,
+    ]
+    imu0_config = [
+        False, False, False,
+        False, False, False,
+        False, False, False,
+        False, False, use_imu_yaw_rate,
+        False, False, False,
     ]
 
     if use_map:
@@ -94,7 +102,8 @@ def main(
                             "odom_frame": odom_frame,
                             "base_link_frame": base_frame,
                             "world_frame": odom_frame,
-                            "initial_state": ekf_initial_state},
+                            "initial_state": ekf_initial_state,
+                            "imu0_config": imu0_config},
                     remaps={"odometry/filtered": "odometry/local"})
 
         if is_indoor:
@@ -151,7 +160,6 @@ def main(
                 if use_datum:
                     bl.node("svea_localization", "set_datum_node.py",
                             name="set_datum_node",
-                            output="screen",
                             params=dict(datum_service=datum_service,
                                         service_timeout=60.0,
                                         datum_file=datum_file,
@@ -164,5 +172,6 @@ def main(
                                 "odom_frame": odom_frame,
                                 "base_link_frame": base_frame,
                                 "world_frame": map_frame,
-                                "initial_state": ekf_initial_state},
+                                "initial_state": ekf_initial_state,
+                                "imu0_config": imu0_config},
                         remaps={"odometry/filtered": "odometry/global"})

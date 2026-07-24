@@ -8,6 +8,7 @@
   <license>TODO: License declaration</license>
 
   <depend>geometry_msgs</depend>
+  <depend>geographic_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>rclpy</depend>
   <depend>rclcpp</depend>
@@ -16,6 +17,8 @@
   <depend>tf2_ros</depend>
   <depend>tf_transformations</depend>
   <depend>ntrip_client</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
 
   <exec_depend>urg_node</exec_depend>
   <exec_depend>nav2_amcl</exec_depend>

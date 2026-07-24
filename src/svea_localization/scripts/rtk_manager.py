@@ -21,7 +21,7 @@ from rclpy.node import Node
 from threading import Thread
 from sensor_msgs.msg import NavSatFix, NavSatStatus
 from nmea_msgs.msg import Sentence
-from std_msgs.msg import Float64
+from std_msgs.msg import Bool, Float64, UInt8, UInt16
 from rtcm_msgs.msg import Message
 
 
@@ -39,24 +39,15 @@ DYN_MODEL_MAP = {
     "wrist_watch": 9,
     "bike": 10,
 }
-# MAP UBlox GPS quality to NAVSatMessage Quality
-# from https://github.com/KumarRobotics/ublox/blob/master/ublox_msgs/msg/NavPVT.msg
-# and https://github.com/ros-drivers/nmea_navsat_driver/blob/b168f499349e5f26e3aed9982deb44ed2f41f8e2/src/libnmea_navsat_driver/driver.py#L108-L149
+# UBX NAV-PVT fixType is a navigation-fix type, not an RTK quality enum.
+# RTK float/fixed is carried separately in NAV-PVT carrSoln.
 GPS_QUALITIES = {
-    # Unknown
-    -1: NavSatStatus.STATUS_NO_FIX,
-    # Invalid
     0: NavSatStatus.STATUS_NO_FIX,
-    # SPS
-    1: NavSatStatus.STATUS_FIX,
-    # DGPS
-    2: NavSatStatus.STATUS_SBAS_FIX,  # Signal from only 3 SVs, constant altitude assumed
-    # DGPS
-    3: NavSatStatus.STATUS_SBAS_FIX,
-    # RTK Fix
-    4: NavSatStatus.STATUS_GBAS_FIX,  # GNSS + Dead reckoning
-    # RTK Float
-    5: NavSatStatus.STATUS_GBAS_FIX,  # Time only fix (High precision devices)
+    1: NavSatStatus.STATUS_NO_FIX,  # dead reckoning only
+    2: NavSatStatus.STATUS_FIX,     # 2D GNSS fix
+    3: NavSatStatus.STATUS_FIX,     # 3D GNSS fix
+    4: NavSatStatus.STATUS_FIX,     # GNSS + dead reckoning
+    5: NavSatStatus.STATUS_NO_FIX,  # time-only fix
 }
 
 
@@ -89,15 +80,16 @@ class RTKManager(Node):
         try:
             self.serial = Serial(self.device, self.baud, bytesize=EIGHTBITS, parity=PARITY_NONE,stopbits=STOPBITS_ONE,timeout=1, exclusive=True)
         except SerialException as ex:
-            self.get_logger().fatal(
-                "Could not open serial port: I/O error({0}): {1}".format(
-                    ex.errno, ex.strerror
-                )
+            message = "Could not open serial port: I/O error({0}): {1}".format(
+                ex.errno, ex.strerror
             )
+            self.get_logger().fatal(message)
+            raise RuntimeError(message) from ex
         # Initialise the ubx reader
         self.ubx_reader = UBXReader(
-            self.serial, protfilter=UBX_PROTOCOL + NMEA_PROTOCOL
-        )  # 1:NEMA 2:UBX 3:NMEA+UBX 4:RTCM 7: NMEA+UBX+RTCM
+            self.serial,
+            protfilter=UBX_PROTOCOL + NMEA_PROTOCOL + RTCM3_PROTOCOL,
+        )  # Parse every protocol that can be present on the bidirectional bridge.
         # Create publishers
         self._init_pub()
         # Create subscriber
@@ -127,6 +119,21 @@ class RTKManager(Node):
         self.magDec_pub = self.create_publisher(Float64, "magnetic_declination", 10)
         # Accuracy of magnetic declination in [deg]
         self.magDecAcc_pub = self.create_publisher(Float64, "magnetic_declination_accuracy", 10)
+        # Explicit receiver-quality topics. NavSatStatus cannot represent
+        # u-blox RTK float/fixed without losing information.
+        self.fix_type_pub = self.create_publisher(UInt8, "fix_type", 10)
+        self.diff_solution_pub = self.create_publisher(Bool, "differential_solution", 10)
+        self.carrier_solution_pub = self.create_publisher(UInt8, "carrier_solution", 10)
+        self.satellites_pub = self.create_publisher(UInt8, "satellites_visible", 10)
+        self.horizontal_accuracy_pub = self.create_publisher(Float64, "horizontal_accuracy", 10)
+        self.vertical_accuracy_pub = self.create_publisher(Float64, "vertical_accuracy", 10)
+        self.position_covariance_valid_pub = self.create_publisher(
+            Bool, "position_covariance_valid", 10
+        )
+        self.rtcm_crc_failed_pub = self.create_publisher(Bool, "rtcm_crc_failed", 10)
+        self.rtcm_message_used_pub = self.create_publisher(UInt8, "rtcm_message_used", 10)
+        self.rtcm_message_type_pub = self.create_publisher(UInt16, "rtcm_message_type", 10)
+        self.rtcm_reference_station_pub = self.create_publisher(UInt16, "rtcm_reference_station", 10)
 
 
     def _init_sub(self):
@@ -227,18 +234,28 @@ class RTKManager(Node):
     def start_serial_read(self):
         """Start new thread which reads from the serial port and handles the incoming messages from the receiver."""
         self.nav_sat_fix_msg = NavSatFix()
-        Thread(target=self._read_serial_handler, args=()).start()
+        Thread(target=self._read_serial_handler, args=(), daemon=True).start()
 
 
     def _handle_rtcm_cb(self, msg):
         """Callback which listens to RTCM messages from NTRIP clients and writes them to the receiver."""
-        raw_rtcm = msg.message
-        self.serial.write(raw_rtcm)
+        raw_rtcm = bytes(msg.message)
+        try:
+            written = self.serial.write(raw_rtcm)
+        except SerialException as ex:
+            self.get_logger().error(f"Failed to write RTCM to receiver: {ex}")
+            return
+        if written != len(raw_rtcm):
+            self.get_logger().error(
+                f"Incomplete RTCM serial write: {written}/{len(raw_rtcm)} bytes"
+            )
 
     def _read_serial_handler(self):
         """Continuously read and handle incoming serial messages."""
         while rclpy.ok():
             raw_msg, parsed_msg = self.ubx_reader.read()
+            if not raw_msg or parsed_msg is None:
+                continue
             msg_protocol = protocol(raw_msg)
             if msg_protocol == UBX_PROTOCOL:
                 self.nav_sat_fix_msg.header.stamp = rclpy.clock.Clock().now().to_msg()
@@ -249,7 +266,27 @@ class RTKManager(Node):
                     # and
                     # https://github.com/semuconsulting/pyubx2/blob/master/src/pyubx2/ubxtypes_get.py
 
-                    # Only use Ok messages
+                    fix_type = int(parsed_msg.fixType)
+                    carrier_solution = int(getattr(parsed_msg, "carrSoln", 0))
+                    differential_solution = bool(getattr(parsed_msg, "diffSoln", 0))
+                    self.fix_type_pub.publish(UInt8(data=fix_type))
+                    self.diff_solution_pub.publish(Bool(data=differential_solution))
+                    self.carrier_solution_pub.publish(UInt8(data=carrier_solution))
+                    self.satellites_pub.publish(UInt8(data=int(parsed_msg.numSV)))
+                    self.horizontal_accuracy_pub.publish(
+                        Float64(data=float(parsed_msg.hAcc) * 1e-3)
+                    )
+                    self.vertical_accuracy_pub.publish(
+                        Float64(data=float(parsed_msg.vAcc) * 1e-3)
+                    )
+                    self.nav_sat_fix_msg.status.status = (
+                        GPS_QUALITIES.get(fix_type, NavSatStatus.STATUS_NO_FIX)
+                        if parsed_msg.gnssFixOk
+                        else NavSatStatus.STATUS_NO_FIX
+                    )
+                    self.nav_sat_fix_msg.status.service = NavSatStatus.SERVICE_GPS
+
+                    # Only use position and motion fields from valid fixes.
                     if parsed_msg.gnssFixOk:
                         # Comment out the following to debug with a print
                         # lon = parsed_msg.lon
@@ -275,16 +312,6 @@ class RTKManager(Node):
                         self.nav_sat_fix_msg.latitude = parsed_msg.lat  # [deg]
                         self.nav_sat_fix_msg.longitude = parsed_msg.lon  # [deg]
                         self.nav_sat_fix_msg.altitude = parsed_msg.height / 1e3  # [m]
-                        # set status status
-                        self.nav_sat_fix_msg.status.status = GPS_QUALITIES.get(
-                            parsed_msg.fixType,
-                            self.nav_sat_fix_msg.status.STATUS_NO_FIX,
-                        )
-                        # Set status service to GPS
-                        self.nav_sat_fix_msg.status.service = (
-                            self.nav_sat_fix_msg.status.SERVICE_GPS
-                        )
-
                         # Publish Speed
                         self.speed_pub.publish(
                             Float64(data=parsed_msg.gSpeed * 1e-3)
@@ -314,6 +341,20 @@ class RTKManager(Node):
                             # Float64(data=parsed_msg.magAcc * 1e-2)
                             Float64(data=parsed_msg.magAcc)
                         )  # [deg]
+
+                elif parsed_msg.identity == "RXM-RTCM":
+                    # Receiver-side confirmation that RTCM crossed the serial
+                    # bridge. pyubx2 exposes the bit fields on supported UBX
+                    # protocol versions; fall back to decoding flags.
+                    flags = int(getattr(parsed_msg, "flags", 0))
+                    crc_failed = bool(getattr(parsed_msg, "crcFailed", flags & 0x01))
+                    message_used = int(getattr(parsed_msg, "msgUsed", (flags >> 1) & 0x03))
+                    message_type = int(getattr(parsed_msg, "msgType", 0))
+                    reference_station = int(getattr(parsed_msg, "refStation", 0))
+                    self.rtcm_crc_failed_pub.publish(Bool(data=crc_failed))
+                    self.rtcm_message_used_pub.publish(UInt8(data=message_used))
+                    self.rtcm_message_type_pub.publish(UInt16(data=message_type))
+                    self.rtcm_reference_station_pub.publish(UInt16(data=reference_station))
 
                 # https://github.com/KumarRobotics/ublox/blob/master/ublox_msgs/msg/CfgNAV5.msg
                 elif parsed_msg.identity == "NAV-COV":
@@ -345,19 +386,30 @@ class RTKManager(Node):
                     # Of course, the additional benefit of using the NAV-COV message is that we also get
                     # the covariance values for the cross-terms.
 
-                    ee = parsed_msg.posCovEE
-                    ne = parsed_msg.posCovNE
-                    ed = parsed_msg.posCovED
-                    nn = parsed_msg.posCovNN
-                    nd = parsed_msg.posCovND
-                    dd = parsed_msg.posCovDD
-                    position_covariance = [ee, ne, -ed, ne, nn, -nd, -ed, -nd, dd]
-                    # Set covariance
-                    self.nav_sat_fix_msg.position_covariance = position_covariance
-                    # Set covariance type to known
-                    self.nav_sat_fix_msg.position_covariance_type = (
-                        self.nav_sat_fix_msg.COVARIANCE_TYPE_KNOWN
+                    covariance_valid = bool(parsed_msg.posCovValid)
+                    self.position_covariance_valid_pub.publish(
+                        Bool(data=covariance_valid)
                     )
+                    if covariance_valid:
+                        ee = parsed_msg.posCovEE
+                        ne = parsed_msg.posCovNE
+                        ed = parsed_msg.posCovED
+                        nn = parsed_msg.posCovNN
+                        nd = parsed_msg.posCovND
+                        dd = parsed_msg.posCovDD
+                        self.nav_sat_fix_msg.position_covariance = [
+                            ee, ne, -ed,
+                            ne, nn, -nd,
+                            -ed, -nd, dd,
+                        ]
+                        self.nav_sat_fix_msg.position_covariance_type = (
+                            self.nav_sat_fix_msg.COVARIANCE_TYPE_KNOWN
+                        )
+                    else:
+                        self.nav_sat_fix_msg.position_covariance = [0.0] * 9
+                        self.nav_sat_fix_msg.position_covariance_type = (
+                            self.nav_sat_fix_msg.COVARIANCE_TYPE_UNKNOWN
+                        )
                     # Publish fix data
                     self.fix_pub.publish(self.nav_sat_fix_msg)
                     # Reset fix message after publishing
@@ -378,10 +430,24 @@ class RTKManager(Node):
                         )
                     )
 
+    def destroy_node(self):
+        if hasattr(self, "serial") and self.serial.is_open:
+            self.serial.close()
+        return super().destroy_node()
+
 def main(args=None):
     rclpy.init(args=args)
-    rtk_manager = RTKManager()
-    rclpy.spin(rtk_manager)
+    rtk_manager = None
+    try:
+        rtk_manager = RTKManager()
+        rclpy.spin(rtk_manager)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if rtk_manager is not None:
+            rtk_manager.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 if __name__ == "__main__":
     main()
