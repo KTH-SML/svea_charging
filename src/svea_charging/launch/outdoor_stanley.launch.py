@@ -32,7 +32,6 @@ def main(
         is_sim=False,
         is_indoor=False,
         initial_pose_a=initial_pose_a,
-        use_imu_yaw_rate=False,
         use_localization=True,
         use_map=False,
         use_rtk=True,

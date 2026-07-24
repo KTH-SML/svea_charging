@@ -9,7 +9,6 @@ def main(
     initial_pose_x: float = 0.0,
     initial_pose_y: float = 0.0,
     initial_pose_a: float = 0.0,
-    use_imu_yaw_rate: bool = True,
     # Map
     use_map: bool = True,
     map_pkg: str = 'svea_core',
@@ -51,14 +50,6 @@ def main(
         0.0, 0.0, 0.0,
         0.0, 0.0, 0.0,
     ]
-    imu0_config = [
-        False, False, False,
-        False, False, False,
-        False, False, False,
-        False, False, use_imu_yaw_rate,
-        False, False, False,
-    ]
-
     if use_map:
 
         bl.node("nav2_map_server", "map_server",
@@ -102,8 +93,7 @@ def main(
                             "odom_frame": odom_frame,
                             "base_link_frame": base_frame,
                             "world_frame": odom_frame,
-                            "initial_state": ekf_initial_state,
-                            "imu0_config": imu0_config},
+                            "initial_state": ekf_initial_state},
                     remaps={"odometry/filtered": "odometry/local"})
 
         if is_indoor:
@@ -172,6 +162,5 @@ def main(
                                 "odom_frame": odom_frame,
                                 "base_link_frame": base_frame,
                                 "world_frame": map_frame,
-                                "initial_state": ekf_initial_state,
-                                "imu0_config": imu0_config},
+                                "initial_state": ekf_initial_state},
                         remaps={"odometry/filtered": "odometry/global"})

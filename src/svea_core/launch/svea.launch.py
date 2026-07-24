@@ -9,7 +9,6 @@ def main(
     initial_pose_x: float = 0.0,
     initial_pose_y: float = 0.0,
     initial_pose_a: float = 0.0, # Yaw Angle
-    use_imu_yaw_rate: bool = True,
     ## Localization Settings
     use_localization: bool = True,
     ## Map
@@ -48,7 +47,6 @@ def main(
                    initial_pose_x=initial_pose_x,
                    initial_pose_y=initial_pose_y,
                    initial_pose_a=initial_pose_a,
-                   use_imu_yaw_rate=use_imu_yaw_rate,
                    use_map=use_map,
                    map_pkg=map_pkg,
                    map_name=map_name,
