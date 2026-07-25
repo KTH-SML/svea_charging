@@ -81,7 +81,10 @@ def main(
         USE_SIM_TIME = False
 
         # Load default parameters
-        LOCAL_EKF_PARAMS = bl.find("svea_localization", "local_ekf.yaml")
+        # Outdoors we no longer fuse the IMU in the local EKF (RTK-safe Stanley
+        # navigation relies on GPS/encoder-only local odometry).
+        local_ekf_file = "local_ekf.yaml" if is_indoor else "local_ekf_outdoors.yaml"
+        LOCAL_EKF_PARAMS = bl.find("svea_localization", local_ekf_file)
         GLOBAL_EKF_PARAMS = bl.find("svea_localization", "global_ekf.yaml")
         AMCL_PARAMS = bl.find("svea_localization", "amcl.yaml")
 
