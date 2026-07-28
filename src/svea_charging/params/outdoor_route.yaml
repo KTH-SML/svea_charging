@@ -1,9 +1,15 @@
 /**:
   ros__parameters:
     # Fixed [x, y] coordinates from /self/odometry/global, in metres.
-    # Recorded outdoor route. The missing samples on the long straight between
-    # [28.9708, -11.3943] and [53.7019, -20.4277] are linearly interpolated.
-    map_waypoints: "[[0.08, 0.06], [3.4054, -1.6743], [6.8375, -2.9042], [9.8627, -4.1149], [13.1001, -5.2870], [17.0590, -6.6582], [20.7134, -8.0179], [24.7937, -9.9003], [28.9708, -11.3943], [32.5038, -12.6848], [36.0368, -13.9753], [39.5698, -15.2658], [43.1029, -16.5563], [46.6359, -17.8468], [50.1689, -19.1373], [53.7019, -20.4277], [55.6704, -21.9590], [55.3155, -24.7540], [54.3397, -27.2455], [52.1761, -32.3509], [50.4993, -37.1857], [52.3462, -39.2204], [54.0947, -38.6791], [55.8307, -35.7568], [56.8935, -33.1084]]"
+    # Fully re-recorded by driving the desired path manually (RC, Stanley
+    # disabled) and resampling /self/odometry/global every 1m of travelled
+    # distance (light smoothing applied first to damp GPS jitter). RTK was
+    # carrSoln=2 / hAcc ~1.4cm for the entire recording. Covers straight +
+    # right turn only, ending at [55.1364, -21.1698]. The manual recording
+    # continued past that into a sharp hook (down to y=-44) that isn't part
+    # of the intended route and also fails the curvature check below -
+    # trimmed off.
+    map_waypoints: "[[0.4685, -0.1614], [1.2611, -0.6187], [2.1161, -0.598], [2.7683, -1.0088], [3.4747, -1.3894], [4.286, -1.418], [4.9541, -1.8591], [5.7264, -2.1787], [6.5737, -2.2548], [7.1206, -2.7396], [7.9392, -3.0468], [8.8064, -3.236], [9.3168, -3.5559], [10.1454, -3.9117], [10.9263, -4.2671], [11.8262, -4.6201], [12.704, -5.0051], [13.5767, -5.2416], [14.3919, -5.5396], [15.1229, -5.9218], [15.9928, -6.2765], [16.9351, -6.596], [17.8638, -6.9612], [18.7728, -7.3765], [19.7056, -7.7358], [20.6253, -8.1269], [21.5442, -8.5199], [22.4444, -8.9504], [23.3735, -9.3159], [24.2862, -9.7229], [25.2073, -10.1114], [26.1627, -10.4038], [27.1317, -10.6428], [28.0849, -10.9422], [29.0352, -11.2457], [29.9471, -11.6532], [30.877, -12.0199], [31.8081, -12.3841], [32.7524, -12.7092], [33.6751, -13.0923], [34.5956, -13.4768], [35.547, -13.778], [36.4753, -14.148], [37.417, -14.4835], [38.3623, -14.8084], [39.2839, -15.1926], [40.2273, -15.518], [41.1574, -15.884], [42.1029, -16.2057], [43.0343, -16.5675], [43.9717, -16.9141], [44.9091, -17.262], [45.8443, -17.6159], [46.793, -17.9316], [47.7269, -18.2815], [48.6738, -18.6002], [49.6389, -18.8417], [50.5856, -19.1522], [51.4989, -19.5556], [52.394, -19.9992], [53.317, -20.3833], [54.247, -20.7239], [55.1364, -21.1698]]"
 
     target_velocity: 0.20
     turn_velocity: 0.12
@@ -30,3 +36,9 @@
     max_horizontal_accuracy: 0.50
     localization_settle_s: 10.0
     max_settle_position_spread: 0.20
+
+    # Outdoor EKF is GPS/encoder-only, so use RTK position deltas as heading
+    # for Stanley instead of trusting odometry yaw.
+    use_course_heading: true
+    course_heading_min_distance: 0.50
+    course_heading_alpha: 0.20

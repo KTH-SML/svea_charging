@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
-"""Standalone, fail-safe outdoor Stanley waypoint follower.
+"""Fail-safe outdoor Stanley waypoint follower.
 
-This node is deliberately separate from the charging mission. Its route is a
-fixed sequence of waypoints in the outdoor ``map`` frame.
+Its route is a fixed sequence of waypoints in the outdoor ``map`` frame.
+It publishes Stanley command topics so the charging BT/control_mux is the
+only thing that owns actuation.
 """
 
 import ast
@@ -13,12 +14,11 @@ from collections import deque
 from nav_msgs.msg import Odometry
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import NavSatFix, NavSatStatus
-from std_msgs.msg import Float64, UInt8
+from std_msgs.msg import Float32, Float64, String, UInt8
 from tf_transformations import euler_from_quaternion
 
 from svea_charging.controllers.stanleyController import StanleyController
 from svea_core import rosonic as rx
-from svea_core.interfaces import ActuationInterface
 
 
 class OutdoorStanley(rx.Node):
@@ -26,6 +26,7 @@ class OutdoorStanley(rx.Node):
     enabled = rx.Parameter(False)
     target_velocity = rx.Parameter(0.20)
     turn_velocity = rx.Parameter(0.12)
+    max_steering_rad = rx.Parameter(0.45)
     goal_tolerance = rx.Parameter(0.75)
     start_tolerance = rx.Parameter(1.50)
     start_heading_tolerance = rx.Parameter(0.50)
@@ -40,6 +41,11 @@ class OutdoorStanley(rx.Node):
     max_horizontal_accuracy = rx.Parameter(0.50)
     localization_settle_s = rx.Parameter(10.0)
     max_settle_position_spread = rx.Parameter(0.20)
+    use_course_heading = rx.Parameter(True)
+    course_heading_min_distance = rx.Parameter(0.25)
+    course_heading_alpha = rx.Parameter(0.35)
+    controller_name = rx.Parameter("stanley")
+    active_controller = rx.Parameter("idle")
 
     # Fixed [x, y] positions in the outdoor global EKF's map frame.
     map_waypoints = rx.Parameter(
@@ -50,16 +56,29 @@ class OutdoorStanley(rx.Node):
     gps_topic = rx.Parameter("gps/fix")
     carrier_solution_topic = rx.Parameter("gps/carrier_solution")
     horizontal_accuracy_topic = rx.Parameter("gps/horizontal_accuracy")
+    steering_cmd_topic = rx.Parameter("stanley/cmd_steering_rad")
+    velocity_cmd_topic = rx.Parameter("stanley/cmd_velocity_mps")
 
-    actuation = ActuationInterface()
+    command_steering_pub = rx.Publisher(Float32, steering_cmd_topic)
+    command_velocity_pub = rx.Publisher(Float32, velocity_cmd_topic)
+    status_pub = rx.Publisher(String, "outdoor_stanley/status")
+    course_heading_pub = rx.Publisher(Float64, "outdoor_stanley/course_heading")
+    cross_track_error_pub = rx.Publisher(Float64, "outdoor_stanley/cross_track_error")
+    yaw_error_pub = rx.Publisher(Float64, "outdoor_stanley/yaw_error")
+    steering_cmd_pub = rx.Publisher(Float64, "outdoor_stanley/steering_cmd")
+    velocity_cmd_pub = rx.Publisher(Float64, "outdoor_stanley/velocity_cmd")
+    target_index_pub = rx.Publisher(UInt8, "outdoor_stanley/target_index")
 
     @rx.Subscriber(Odometry, odometry_topic)
     def _odometry_cb(self, msg: Odometry):
         q = msg.pose.pose.orientation
-        yaw = euler_from_quaternion([q.x, q.y, q.z, q.w])[2]
+        odom_yaw = euler_from_quaternion([q.x, q.y, q.z, q.w])[2]
+        x = float(msg.pose.pose.position.x)
+        y = float(msg.pose.pose.position.y)
+        yaw = self._heading_from_course(x, y, odom_yaw)
         self.state = (
-            float(msg.pose.pose.position.x),
-            float(msg.pose.pose.position.y),
+            x,
+            y,
             float(yaw),
             float(msg.twist.twist.linear.x),
         )
@@ -90,6 +109,10 @@ class OutdoorStanley(rx.Node):
         self.horizontal_accuracy = float(msg.data)
         self.last_accuracy_s = self._now_s()
 
+    @rx.Subscriber(String, "mission/active_controller")
+    def _mission_active_cb(self, msg: String):
+        self.active_controller = msg.data
+
     def on_startup(self):
         self.state = None
         self.last_odom_s = None
@@ -104,7 +127,9 @@ class OutdoorStanley(rx.Node):
         self.finished = False
         self.route_error = None
         self.stop_reason = None
-        self.was_enabled = self._enabled_now()
+        self.was_enabled = self._is_control_active()
+        self.last_course_point = None
+        self.course_heading = None
         self.controller = StanleyController(node=self)
         self.controller.target_velocity = float(self.target_velocity)
         self.waypoints = self._parse_waypoints(str(self.map_waypoints))
@@ -114,12 +139,14 @@ class OutdoorStanley(rx.Node):
             self.waypoints[1][1] - self.start[1],
             self.waypoints[1][0] - self.start[0],
         )
+        if bool(self.use_course_heading):
+            self.course_heading = self.route_heading
 
         period = 1.0 / max(float(self.update_hz), 1.0)
         self.create_timer(period, self.loop)
         self.get_logger().warn(
-            "Outdoor Stanley is DISABLED" if not self.was_enabled
-            else "Outdoor Stanley is ENABLED; waiting for fresh GPS and global odometry"
+            "Outdoor Stanley is inactive" if not self.was_enabled
+            else "Outdoor Stanley is active; waiting for fresh GPS and global odometry"
         )
 
     @staticmethod
@@ -156,22 +183,24 @@ class OutdoorStanley(rx.Node):
         # A disabled observer must not compete with manual control or another
         # controller for the LLI. Once enabled, every inhibit condition sends
         # an explicit stop command.
-        enabled = self._enabled_now()
+        enabled = self._is_control_active()
         if not enabled:
             # Do not publish while the node starts disabled, so it cannot
             # compete with manual control. If it is disabled at runtime after
             # having been active, send one explicit stop before going silent.
             if self.was_enabled:
-                self.actuation.send_control(0.0, 0.0)
+                self._send_control(0.0, 0.0)
             if self.stop_reason != "disabled":
-                self.get_logger().warn("Outdoor Stanley inactive: disabled")
+                self._publish_status("idle")
+                self.get_logger().warn("Outdoor Stanley inactive")
                 self.stop_reason = "disabled"
             self.was_enabled = False
             return
         if not self.was_enabled:
             self.get_logger().warn(
-                "Outdoor Stanley enabled at runtime; applying safety checks"
+                "Outdoor Stanley activated at runtime; applying safety checks"
             )
+            self.controller.reset_pid()
         self.was_enabled = True
 
         reason = self._inhibit_reason()
@@ -189,7 +218,10 @@ class OutdoorStanley(rx.Node):
 
         self._set_speed_for_curvature()
         steering, velocity = self.controller.compute_control(self.state)
-        self.actuation.send_control(float(steering), -float(velocity))
+        steering, velocity = self._limit_command(steering, velocity)
+        self._publish_control_debug(steering, velocity)
+        self._publish_status("running")
+        self._send_control(float(steering), float(velocity))
 
     def _inhibit_reason(self):
         if self.finished:
@@ -230,7 +262,7 @@ class OutdoorStanley(rx.Node):
             if start_distance > float(self.start_tolerance):
                 return f"outside start tolerance ({start_distance:.2f} m)"
             heading_error = abs(self._normalize_angle(self.state[2] - self.route_heading))
-            if heading_error > float(self.start_heading_tolerance):
+            if heading_error > float(self.start_heading_tolerance) and not bool(self.use_course_heading):
                 return f"outside start heading tolerance ({heading_error:.2f} rad)"
             self._initialize_path()
             if not self.path_ready:
@@ -270,12 +302,30 @@ class OutdoorStanley(rx.Node):
         else:
             self.controller.target_velocity = float(self.target_velocity)
 
+    def _limit_command(self, steering, velocity):
+        # Velocity is intentionally not re-clamped to target_velocity here:
+        # the PID in StanleyController already converges to target_velocity
+        # (and is bounded by its own max_velocity), so clamping on top of it
+        # just pins the output and prevents the PID from ever correcting.
+        max_steering = abs(float(self.max_steering_rad))
+        steering = min(max(float(steering), -max_steering), max_steering)
+        return steering, float(velocity)
+
     @staticmethod
     def _normalize_angle(angle):
         return (angle + math.pi) % (2.0 * math.pi) - math.pi
 
     def _stop(self, reason):
-        self.actuation.send_control(0.0, 0.0)
+        self._send_control(0.0, 0.0)
+        self._publish_stop_debug()
+        # Clear the velocity PID here, not on resume: it may sit stopped for a
+        # long time, and resuming should start clean rather than carry over a
+        # stale integral that wound up before/during the stop.
+        self.controller.reset_pid()
+        status = "goal_reached" if reason == "goal reached" else "blocked"
+        if "RTK" in reason:
+            status = "rtk_lost"
+        self._publish_status(status)
         if reason != self.stop_reason:
             log = self.get_logger().info if reason == "goal reached" else self.get_logger().warn
             log(f"Outdoor Stanley stopped: {reason}")
@@ -287,6 +337,59 @@ class OutdoorStanley(rx.Node):
     def _enabled_now(self):
         """Read the live ROS value; rx.Parameter caches its startup value."""
         return bool(self.get_parameter("enabled").value)
+
+    def _is_control_active(self):
+        if not self._enabled_now():
+            return False
+        return str(self.active_controller) == str(self.controller_name)
+
+    def _send_control(self, steering, velocity):
+        self.command_steering_pub.publish(Float32(data=float(steering)))
+        self.command_velocity_pub.publish(Float32(data=float(velocity)))
+
+    def _publish_status(self, status):
+        self.status_pub.publish(String(data=str(status)))
+
+    def _heading_from_course(self, x, y, fallback_yaw):
+        if not bool(self.use_course_heading):
+            return fallback_yaw
+
+        current = (x, y)
+        if self.last_course_point is None:
+            self.last_course_point = current
+            return self.course_heading if self.course_heading is not None else fallback_yaw
+
+        last_x, last_y = self.last_course_point
+        dx = x - last_x
+        dy = y - last_y
+        distance = math.hypot(dx, dy)
+        if distance < float(self.course_heading_min_distance):
+            return self.course_heading if self.course_heading is not None else fallback_yaw
+
+        measured_heading = math.atan2(dy, dx)
+        if self.course_heading is None:
+            self.course_heading = measured_heading
+        else:
+            alpha = min(max(float(self.course_heading_alpha), 0.0), 1.0)
+            correction = self._normalize_angle(measured_heading - self.course_heading)
+            self.course_heading = self._normalize_angle(self.course_heading + alpha * correction)
+        self.last_course_point = current
+        return self.course_heading
+
+    def _publish_control_debug(self, steering, velocity):
+        self.steering_cmd_pub.publish(Float64(data=float(steering)))
+        self.velocity_cmd_pub.publish(Float64(data=float(velocity)))
+        self.cross_track_error_pub.publish(Float64(data=float(self.controller.cross_track_error)))
+        self.yaw_error_pub.publish(Float64(data=float(self.controller.yaw_error)))
+        if self.course_heading is not None:
+            self.course_heading_pub.publish(Float64(data=float(self.course_heading)))
+        self.target_index_pub.publish(UInt8(data=min(int(self.controller.target_idx), 255)))
+
+    def _publish_stop_debug(self):
+        self.steering_cmd_pub.publish(Float64(data=0.0))
+        self.velocity_cmd_pub.publish(Float64(data=0.0))
+        if self.course_heading is not None:
+            self.course_heading_pub.publish(Float64(data=float(self.course_heading)))
 
 
 if __name__ == "__main__":

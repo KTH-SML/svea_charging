@@ -15,13 +15,14 @@ sys.path.append(str(pathlib.Path(__file__).parent.parent.parent))
 from svea_charging.third_party.PythonRobotics.PathPlanning.CubicSpline import cubic_spline_planner
 
 # Parameters
-k = 2.0 # control gain
+k = 0.28 # control gain
 Kp = 0.6  # speed proportional gain
 dt = 0.05  # [s] time difference
 L = 0.2  # [m] Wheel base of vehicle (TODO: check this value)
 max_steer = np.radians(40.0)  # [rad] physical steering limit
-max_steer_rate = np.radians(80.0)  # [rad/s] servo command slew rate
-max_velocity = 1.0  # [m/s] low-gear limit
+max_steer_rate = np.radians(40.0)  # [rad/s] servo command slew rate
+max_velocity = 0.6  # [m/s] low-gear limit
+max_velocity_rate = 0.5  # [m/s^2] velocity command slew rate
 
 Ki = .2
 Kd = 0.01
@@ -64,7 +65,16 @@ class StanleyController:
         self.cross_track_error = 0.0
         self.yaw_error = 0.0
         self.steering = 0.0
+        self.velocity_cmd = 0.0
         self.node = node
+
+    def reset_pid(self):
+        """Clear velocity-PID state so a stale integral from before a stop
+        doesn't cause a sudden lurch when the controller resumes."""
+        self.error_integral = 0.0
+        self.error_derivative = 0.0
+        self.error_prev = 0.0
+        self.velocity_cmd = 0.0
 
     def update(self, state):
         """
@@ -99,8 +109,17 @@ class StanleyController:
 
         # The actuation interface expects a velocity setpoint, not acceleration.
         correction = Kp * error + Ki * self.error_integral + Kd * self.error_derivative
-        return float(np.clip(self.target_velocity + correction,
-                             -max_velocity, max_velocity))
+        requested_velocity = float(np.clip(self.target_velocity + correction,
+                                           -max_velocity, max_velocity))
+
+        # Avoid feeding an instantaneous step to the throttle (e.g. the jump
+        # straight to max_velocity on the first tick after activation).
+        max_step = max_velocity_rate * dt
+        velocity = float(np.clip(requested_velocity,
+                                 self.velocity_cmd - max_step,
+                                 self.velocity_cmd + max_step))
+        self.velocity_cmd = velocity
+        return velocity
 
 
     def stanley_control(self, cx, cy, cyaw, last_target_idx):
