@@ -75,13 +75,16 @@ class line_follower(rx.Node):
     velocity_cmd_topic = rx.Parameter("line_follower/cmd_velocity_mps")
 
 
-    publish_debug_image = rx.Parameter(False)
+    publish_debug_image = rx.Parameter(True)
     debug_image_topic = rx.Parameter("line_follower/debug_image")
     debug_publish_every_n = rx.Parameter(3)
 
-    lower_h = rx.Parameter(20)
-    lower_s = rx.Parameter(100)
-    lower_v = rx.Parameter(100)
+    # Outdoor defaults per LINE_FOLLOWER_CAMERA_HANDOFF.md problem 2: indoor
+    # thresholds required S>=100, but the yellow line outdoors measured
+    # S~50-90 (H~19-23, V~176-189). Re-derive per-robot before trusting these.
+    lower_h = rx.Parameter(15)
+    lower_s = rx.Parameter(40)
+    lower_v = rx.Parameter(80)
     upper_h = rx.Parameter(35)
     upper_s = rx.Parameter(255)
     upper_v = rx.Parameter(255)

@@ -56,6 +56,10 @@ def main(
     stanley_turn_velocity: float = 0.25,
     stanley_max_steering_rad: float = 0.35,
     control_mux_timeout_s: float = 1.0,
+    camera_video_device: str = "/dev/video0",
+    apply_camera_v4l2_fix: bool = True,
+    camera_exposure_time_absolute: int = 150,
+    camera_white_balance_temperature: int = 6500,
 ):
     """Outdoor charging mission: RTK/GPS Stanley approach, then line follower."""
     bl = BetterLaunch()
@@ -110,7 +114,7 @@ def main(
             "usb_cam_node_exe",
             name="usb_cam_node",
             params=dict(
-                video_device="/dev/video0",
+                video_device=camera_video_device,
                 camera_name="narrow_stereo",
                 frame_id=camera_frame_id,
                 pixel_format="mjpeg2rgb",
@@ -132,6 +136,24 @@ def main(
                 "/camera_info": "camera/camera_info",
             },
         )
+
+        if apply_camera_v4l2_fix:
+            # usb_cam_node's own autoexposure/auto_white_balance params
+            # silently no-op on this camera's v4l2 driver (control names
+            # don't match), so the fix has to go through v4l2-ctl directly.
+            # See LINE_FOLLOWER_CAMERA_HANDOFF.md problem 1. Values are
+            # per-robot/per-camera - override via launch args if they don't
+            # hold on a different unit.
+            bl.node(
+                "svea_charging",
+                "set_camera_ctrls.py",
+                name="set_camera_ctrls",
+                params=dict(
+                    video_device=camera_video_device,
+                    exposure_time_absolute=camera_exposure_time_absolute,
+                    white_balance_temperature=camera_white_balance_temperature,
+                ),
+            )
 
         if use_aruco_camera:
             bl.node(
