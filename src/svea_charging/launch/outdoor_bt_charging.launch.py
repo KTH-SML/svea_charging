@@ -2,12 +2,25 @@
 
 from better_launch import BetterLaunch, launch_this
 
+# Each preset bundles a route file with the ArUco marker ID mounted on that
+# route's charging station, so the two can never drift out of sync (see
+# CHARGING_STATION_HANDOFF.md - route + marker ID are logically one
+# "destination"). Add a new preset here whenever a new route/station is
+# recorded and calibrated.
+ROUTE_PRESETS = {
+    "parking_lot": dict(
+        route_config="params/routes/to_parking_lot.yaml",
+        aruco_marker_id=11,
+    ),
+}
+
 
 @launch_this
 def main(
     name: str = "self",
     enabled: bool = True,
     initial_pose_a: float = 2.548181,
+    route_preset: str = "parking_lot",
     route_config: str = "",
     use_datum: bool = True,
     datum_file: str = "",
@@ -28,7 +41,7 @@ def main(
     aruco_publish_debug_image: bool = False,
     aruco_jpeg_quality: int = 80,
     aruco_generate_marker_on_startup: bool = False,
-    aruco_marker_id: int = 11,
+    aruco_marker_id: int = -1,
     aruco_marker_size_px: int = 400,
     aruco_output: str = "aruco_marker.png",
     aruco_calibration_file: str = "",
@@ -49,8 +62,23 @@ def main(
 
     camera_frame_id = camera_frame_id.format(name=name)
     aruco_frame_id = aruco_frame_id.format(name=name)
+
+    if route_preset:
+        if route_preset not in ROUTE_PRESETS:
+            raise ValueError(
+                f"Unknown route_preset '{route_preset}', expected one of "
+                f"{list(ROUTE_PRESETS)}"
+            )
+        preset = ROUTE_PRESETS[route_preset]
+        if not route_config:
+            route_config = bl.find("svea_charging", preset["route_config"])
+        if aruco_marker_id < 0:
+            aruco_marker_id = preset["aruco_marker_id"]
+
     if not route_config:
-        route_config = bl.find("svea_charging", "params/outdoor_route.yaml")
+        route_config = bl.find("svea_charging", "params/routes/to_parking_lot.yaml")
+    if aruco_marker_id < 0:
+        aruco_marker_id = 11
     if not datum_file:
         datum_file = bl.find("svea_charging", "params/outdoor_datum.yaml")
     if not aruco_calibration_file:

@@ -21,7 +21,7 @@ def main(
     bl = BetterLaunch()
 
     if not route_config:
-        route_config = bl.find("svea_charging", "params/outdoor_route.yaml")
+        route_config = bl.find("svea_charging", "params/routes/to_parking_lot.yaml")
     if not datum_file:
         datum_file = bl.find("svea_charging", "params/outdoor_datum.yaml")
 
