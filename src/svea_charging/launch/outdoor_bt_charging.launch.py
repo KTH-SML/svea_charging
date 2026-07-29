@@ -39,7 +39,7 @@ def main(
     bt_charge_start_voltage: float = 12.4,
     bt_charge_done_voltage: float = 12.6,
     bt_charge_voltage_confirm_s: float = 3.0,
-    stanley_target_velocity: float = 0.35,
+    stanley_target_velocity: float = 0.28,
     stanley_turn_velocity: float = 0.25,
     stanley_max_steering_rad: float = 0.35,
     control_mux_timeout_s: float = 1.0,

@@ -11,11 +11,13 @@ import ast
 import math
 from collections import deque
 
+from geometry_msgs.msg import Point
 from nav_msgs.msg import Odometry
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import NavSatFix, NavSatStatus
 from std_msgs.msg import Float32, Float64, String, UInt8
 from tf_transformations import euler_from_quaternion
+from visualization_msgs.msg import Marker
 
 from svea_charging.controllers.stanleyController import StanleyController
 from svea_core import rosonic as rx
@@ -68,6 +70,9 @@ class OutdoorStanley(rx.Node):
     steering_cmd_pub = rx.Publisher(Float64, "outdoor_stanley/steering_cmd")
     velocity_cmd_pub = rx.Publisher(Float64, "outdoor_stanley/velocity_cmd")
     target_index_pub = rx.Publisher(UInt8, "outdoor_stanley/target_index")
+    goal_pub = rx.Publisher(Marker, "outdoor_stanley/goal_marker")
+    waypoints_pub = rx.Publisher(Marker, "outdoor_stanley/waypoints_marker")
+    traj_pub = rx.Publisher(Marker, "outdoor_stanley/traj_marker")
 
     @rx.Subscriber(Odometry, odometry_topic)
     def _odometry_cb(self, msg: Odometry):
@@ -130,6 +135,7 @@ class OutdoorStanley(rx.Node):
         self.was_enabled = self._is_control_active()
         self.last_course_point = None
         self.course_heading = None
+        self.viz_counter = 0
         self.controller = StanleyController(node=self)
         self.controller.target_velocity = float(self.target_velocity)
         self.waypoints = self._parse_waypoints(str(self.map_waypoints))
@@ -209,6 +215,7 @@ class OutdoorStanley(rx.Node):
             return
 
         self.stop_reason = None
+        self._publish_viz_if_due()
         distance = math.hypot(self.goal[0] - self.state[0], self.goal[1] - self.state[1])
         at_path_end = self.controller.target_idx >= len(self.controller.cx) - 2
         if distance <= float(self.goal_tolerance) and at_path_end:
@@ -390,6 +397,82 @@ class OutdoorStanley(rx.Node):
         self.velocity_cmd_pub.publish(Float64(data=0.0))
         if self.course_heading is not None:
             self.course_heading_pub.publish(Float64(data=float(self.course_heading)))
+
+    def _publish_viz_if_due(self):
+        # Route/goal are static once the path is built; republish every
+        # ~1s (not every tick) so late-joining RViz/Foxglove subscribers
+        # still pick them up.
+        self.viz_counter += 1
+        if self.viz_counter % max(int(self.update_hz), 1) != 0:
+            return
+        self._publish_goal_marker()
+        self._publish_waypoints_marker()
+        self._publish_traj_marker()
+
+    def _publish_goal_marker(self):
+        msg = Marker()
+        msg.header.frame_id = "map"
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.ns = "outdoor_stanley_goal"
+        msg.id = 0
+        msg.type = Marker.SPHERE
+        msg.action = Marker.ADD
+        msg.pose.position.x = float(self.goal[0])
+        msg.pose.position.y = float(self.goal[1])
+        msg.pose.position.z = 0.2
+        msg.pose.orientation.w = 1.0
+        msg.scale.x = 0.4
+        msg.scale.y = 0.4
+        msg.scale.z = 0.4
+        msg.color.r = 0.0
+        msg.color.g = 0.0
+        msg.color.b = 1.0
+        msg.color.a = 1.0
+        self.goal_pub.publish(msg)
+
+    def _publish_waypoints_marker(self):
+        msg = Marker()
+        msg.header.frame_id = "map"
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.ns = "outdoor_stanley_waypoints"
+        msg.id = 0
+        msg.type = Marker.LINE_STRIP
+        msg.action = Marker.ADD
+        msg.scale.x = 0.05
+        msg.color.r = 1.0
+        msg.color.g = 1.0
+        msg.color.b = 0.0
+        msg.color.a = 1.0
+        msg.points = []
+        for wp in self.waypoints:
+            p = Point()
+            p.x = float(wp[0])
+            p.y = float(wp[1])
+            p.z = 0.05
+            msg.points.append(p)
+        self.waypoints_pub.publish(msg)
+
+    def _publish_traj_marker(self):
+        msg = Marker()
+        msg.header.frame_id = "map"
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.ns = "outdoor_stanley_traj"
+        msg.id = 0
+        msg.type = Marker.LINE_STRIP
+        msg.action = Marker.ADD
+        msg.scale.x = 0.05
+        msg.color.r = 0.0
+        msg.color.g = 1.0
+        msg.color.b = 0.0
+        msg.color.a = 1.0
+        msg.points = []
+        for x, y in zip(self.controller.cx, self.controller.cy):
+            p = Point()
+            p.x = float(x)
+            p.y = float(y)
+            p.z = 0.03
+            msg.points.append(p)
+        self.traj_pub.publish(msg)
 
 
 if __name__ == "__main__":

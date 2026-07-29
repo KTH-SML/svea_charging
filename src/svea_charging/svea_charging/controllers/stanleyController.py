@@ -21,7 +21,7 @@ dt = 0.05  # [s] time difference
 L = 0.2  # [m] Wheel base of vehicle (TODO: check this value)
 max_steer = np.radians(40.0)  # [rad] physical steering limit
 max_steer_rate = np.radians(40.0)  # [rad/s] servo command slew rate
-max_velocity = 0.6  # [m/s] low-gear limit
+max_velocity = 0.4  # [m/s] low-gear limit
 max_velocity_rate = 0.5  # [m/s^2] velocity command slew rate
 
 Ki = .2
