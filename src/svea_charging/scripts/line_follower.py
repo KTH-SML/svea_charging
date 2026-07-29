@@ -97,25 +97,38 @@ class line_follower(rx.Node):
     steering_kd = rx.Parameter(0.02)
     steering_limit_rad = rx.Parameter(0.6)
     lost_line_steering_rad = rx.Parameter(0.0)
+    # Constant pixel offset added to the image center used for steering
+    # error. Compensates a camera mount that's slightly off the vehicle's
+    # true centerline (shows up as a consistent sideways offset while
+    # tracking a straight line). See loop().
+    steering_bias_px = rx.Parameter(20.0)
     velocity_scale_from_error = rx.Parameter(False)
 
     use_aruco_stop = rx.Parameter(True)
     aruco_distance_topic = rx.Parameter("aruco/distance_m")
     aruco_stop_distance_m = rx.Parameter(0.622)
-    platform_transition_distance_m = rx.Parameter(0.91)
-    ramp_min_velocity = rx.Parameter(0.35)
-    approach_deceleration_mps2 = rx.Parameter(0.8)
+    platform_transition_distance_m = rx.Parameter(1.0)
+    ramp_min_velocity = rx.Parameter(0.4)
+    approach_deceleration_mps2 = rx.Parameter(0.6)
     # Keep correcting until the behaviour tree detects charging. Set this above
     # zero only if a stationary acceptance band is desired.
     dock_tolerance_m = rx.Parameter(0.0)
-    aruco_velocity_kp = rx.Parameter(0.35)
+    aruco_velocity_kp = rx.Parameter(0.4)
     aruco_velocity_ki = rx.Parameter(0.15)
     aruco_velocity_kd = rx.Parameter(0.0)
     aruco_velocity_integral_limit = rx.Parameter(0.3)
     aruco_max_backup_velocity = rx.Parameter(0.3)
     aruco_min_forward_command = rx.Parameter(0.25)
     aruco_min_backup_command = rx.Parameter(0.3)
-    reverse_neutral_time_s = rx.Parameter(0.25)
+    # Must exceed dock_settle_time_s to actually take effect — see
+    # _change_dock_search_direction(), which waits
+    # max(dock_settle_time_s, reverse_neutral_time_s) before reversing.
+    # 0.25 < the old dock_settle_time_s default (0.30) was a no-op: the ESC
+    # may need a real neutral pause before reverse arms, and the docking
+    # bag (line_follower_docking_check) showed commanded reverse averaging
+    # -0.257 m/s for 6.75s straight while measured velocity averaged only
+    # -0.017 m/s — i.e. reverse was requested but barely happened.
+    reverse_neutral_time_s = rx.Parameter(0.6)
     dock_search_half_width_m = rx.Parameter(0.015)
     dock_settle_time_s = rx.Parameter(0.30)
     velocity_command_slew_mps2 = rx.Parameter(0.7)
@@ -440,7 +453,13 @@ class line_follower(rx.Node):
             return
 
         _, width = frame.shape[:2]
-        image_center_x = width / 2.0
+        # Trim for camera mounting offset/yaw: if the car consistently
+        # tracks off to one side of the physical line, the image's
+        # geometric center isn't the car's true centerline. Tune live via
+        # `ros2 param set /self/line_follower steering_bias_px <value>` —
+        # sign depends on mount direction, so nudge it one way, check which
+        # side the offset shrinks on, then dial in.
+        image_center_x = width / 2.0 + float(self.steering_bias_px)
 
         if self.latest_centroid is None:
             self._publish_status("line_lost")

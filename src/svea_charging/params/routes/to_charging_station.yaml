@@ -1,0 +1,64 @@
+/**:
+  ros__parameters:
+    # Fixed [x, y] coordinates from /self/odometry/global, in metres.
+    # Same start point as to_parking_lot.yaml, but the right turn happens
+    # earlier and leads to a relocated charging station (station moved for
+    # this branch's docking integration work).
+    #
+    # Straight leg 1 rectified to 1m spacing exactly on the line between the
+    # trusted start point and the new turn vertex [23.4887, -10.1176]
+    # (registered as a single-shot /self/odometry/global read, RTK fixed,
+    # std ~0.16-0.21m).
+    #
+    # From there: a circular fillet arc (R=4.0m, matching the ~87.2 deg turn
+    # between the incoming heading and the outgoing lead-in/station heading
+    # — steeper than to_parking_lot.yaml's ~82 deg turn, hence the larger
+    # radius) blends into a straight line (1m spacing) to the station.
+    #
+    # The outgoing heading was derived from two anchor points near the
+    # station rather than the turn vertex itself: [20.3552, -17.4492]
+    # (lead-in point, a few meters behind the station, std ~0.16-0.20m) and
+    # [19.4899, -19.7499] (the station itself, std ~0.22-0.25m — this is a
+    # re-take; the first station read had std ~0.31-0.32m, right at the
+    # edge of "good", so it was re-measured once for a tighter fix before
+    # committing to the route. The two reads were ~0.15m apart, consistent
+    # within combined uncertainty). These two points and the turn vertex
+    # were confirmed collinear (bearing differs by <1 deg), so no separate
+    # second turn was needed — just one right turn, then dead straight into
+    # the station.
+    #
+    # Peak spline curvature checked at 0.293 (1/m), i.e. effective min
+    # radius ~3.42m, well clear of minimum_turning_radius below.
+    map_waypoints: "[[0.4685, -0.1614], [1.3982, -0.5635], [2.3278, -0.9655], [3.2575, -1.3676], [4.1871, -1.7697], [5.1168, -2.1718], [6.0464, -2.5738], [6.9761, -2.9759], [7.9057, -3.378], [8.8354, -3.7801], [9.765, -4.1821], [10.6947, -4.5842], [11.6243, -4.9863], [12.554, -5.3884], [13.4836, -5.7904], [14.4133, -6.1925], [15.3429, -6.5946], [16.2726, -6.9967], [17.2022, -7.3987], [18.1319, -7.8008], [19.0615, -8.2029], [19.9912, -8.605], [20.4429, -8.8354], [20.8619, -9.1211], [21.2413, -9.4575], [21.5751, -9.8392], [21.858, -10.2601], [22.0853, -10.7133], [22.2535, -11.1917], [22.3598, -11.6876], [22.4025, -12.1929], [22.3809, -12.6995], [22.2954, -13.1993], [22.1473, -13.6843], [21.7677, -14.5509], [21.3881, -15.4174], [21.0084, -16.2839], [20.6288, -17.1504], [20.2492, -18.0169], [19.8695, -18.8834], [19.4899, -19.7499]]"
+
+    target_velocity: 0.20
+    turn_velocity: 0.12
+    goal_tolerance: 0.75
+
+    # The first waypoint and first route segment define the required start.
+    start_tolerance: 1.50
+    start_heading_tolerance: 0.50
+
+    # Stop if the vehicle center is farther than this from the spline.
+    corridor_width: 1.50
+
+    # Slow down when upcoming spline curvature reaches this value [1/m].
+    turn_curvature_threshold: 0.50
+
+    # Reject a generated route containing a tighter bend than this radius [m].
+    minimum_turning_radius: 0.40
+
+    odometry_timeout_s: 0.30
+    gps_timeout_s: 2.50
+    rtk_timeout_s: 2.50
+    require_rtk_fixed: true
+    rtk_fixed_settle_s: 10.0
+    max_horizontal_accuracy: 0.50
+    localization_settle_s: 10.0
+    max_settle_position_spread: 0.20
+
+    # Outdoor EKF is GPS/encoder-only, so use RTK position deltas as heading
+    # for Stanley instead of trusting odometry yaw.
+    use_course_heading: true
+    course_heading_min_distance: 0.50
+    course_heading_alpha: 0.20

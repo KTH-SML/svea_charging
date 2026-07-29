@@ -12,6 +12,16 @@ ROUTE_PRESETS = {
         route_config="params/routes/to_parking_lot.yaml",
         aruco_marker_id=11,
     ),
+    # Earlier right turn + relocated charging station (same physical
+    # station/marker, just moved) — see to_charging_station.yaml for the
+    # anchor-point derivation. Not yet driven end-to-end; verify the
+    # curvature-checked geometry against the real turn before trusting it
+    # at full speed. Update aruco_marker_id here if a new/different marker
+    # was printed for the relocated station.
+    "charging_station": dict(
+        route_config="params/routes/to_charging_station.yaml",
+        aruco_marker_id=11,
+    ),
 }
 
 
@@ -46,8 +56,8 @@ def main(
     aruco_output: str = "aruco_marker.png",
     aruco_calibration_file: str = "",
     aruco_focal_length_px: float = -1.0,
-    bt_dock_distance_m: float = 0.617,
-    bt_switch_distance_m: float = 2.2,
+    bt_dock_distance_m: float = 0.6284449100494385,
+    bt_switch_distance_m: float = 2.25,
     bt_docking_exit_distance_m: float = 2.75,
     bt_charge_start_voltage: float = 12.4,
     bt_charge_done_voltage: float = 12.6,
