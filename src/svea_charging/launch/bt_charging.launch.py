@@ -19,12 +19,12 @@ def main(
     camera_image_topic: str = "image_raw",
     camera_frame_id: str = "{name}/camera",
     aruco_dictionary: str = "DICT_4X4_50",
-    aruco_marker_length_m: float = 0.365,
+    aruco_marker_length_m: float = 0.075,# 0.365,
     aruco_display: bool = False,
     aruco_loop_hz: float = 30.0,
     aruco_frame_id: str = "{name}/camera",
     aruco_use_aruco_detector_api: bool = False,
-    aruco_publish_debug_image: bool = True,
+    aruco_publish_debug_image: bool = False,
     aruco_jpeg_quality: int = 80,
     aruco_generate_marker_on_startup: bool = False,
     aruco_marker_id: int = 13,
@@ -32,8 +32,13 @@ def main(
     aruco_output: str = "aruco_marker.png",
     aruco_calibration_file: str = "",
     aruco_focal_length_px: float = -1.0,
-    bt_switch_distance_m: float = 3.15,
-    bt_dock_distance_m: float = 1.63,
+    bt_dock_distance_m: float = 0.617,
+    bt_switch_distance_m: float = 2.2, #bt_dock_distance_m * 3.6
+    bt_docking_exit_distance_m: float = 2.75,
+    bt_charge_start_voltage: float = 12.2,
+    bt_charge_done_voltage: float = 12.6,
+    bt_charge_voltage_confirm_s: float = 3.0,
+    use_rtk: bool = False,
 ):
     bl = BetterLaunch()
 
@@ -51,7 +56,12 @@ def main(
                initial_pose_x=initial_pose_x,
                initial_pose_y=initial_pose_y,
                initial_pose_a=initial_pose_a,
-               use_foxglove=use_foxglove,)
+               # Mocap is the localization source indoors. Starting the EKFs as
+               # well makes their odometry callbacks require a map->odom TF that
+               # does not exist without the global (GPS) localization pipeline.
+               use_localization=not use_mocap,
+               use_foxglove=use_foxglove,
+               use_rtk=use_rtk,)
 
     with bl.group(name):
         if not is_sim:
@@ -66,7 +76,7 @@ def main(
                         image_height=480,
                         framerate=30.0,
                         camera_info_url=f"file://{aruco_calibration_file}",
-                        brightness=130,
+                        brightness=120,
                         gain=10,
                         auto_white_balance=False,
                         white_balance=4000,
@@ -118,13 +128,18 @@ def main(
                     use_rviz=use_foxglove,
                     is_sim=is_sim,
                     image_topic=camera_image_topic,
+                    aruco_stop_distance_m=bt_dock_distance_m,
                 ))
 
         bl.node("svea_charging", "bt_runner.py",
                 name="bt_runner",
                 params=dict(
                     switch_distance_m=bt_switch_distance_m,
+                    docking_exit_distance_m=bt_docking_exit_distance_m,
                     dock_distance_m=bt_dock_distance_m,
+                    charge_start_voltage=bt_charge_start_voltage,
+                    charge_done_voltage=bt_charge_done_voltage,
+                    charge_voltage_confirm_s=bt_charge_voltage_confirm_s,
                 ))
 
         bl.node("svea_charging", "control_mux.py",

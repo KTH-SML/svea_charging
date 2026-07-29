@@ -370,6 +370,7 @@ class aruco_camera_test(rx.Node):
         pose_array = self._empty_pose_array()
         status_text = ""
         overlay_color = (0, 0, 255)
+        target_distance_m = None
 
         if ids is not None and len(ids) > 0:
             ids_list = [int(i) for i in ids.flatten()]
@@ -427,6 +428,12 @@ class aruco_camera_test(rx.Node):
                     anchor = corners[i][0][0]
                     x_px, y_px = int(anchor[0]), int(anchor[1])
                     distance_m = float(np.linalg.norm(marker_txyz))
+                    # Only the configured charging-station marker ID should
+                    # drive the BT's docking-distance decision; any other
+                    # marker in view (wrong sign, stray marker, etc.) must
+                    # not be able to trigger the approach->docking switch.
+                    if int(marker_id) == int(self.marker_id):
+                        target_distance_m = distance_m
                     lines = [
                         f"ID {int(marker_id)}: {distance_m:.2f} m",
                         f"R/P/Y: {roll_deg:.0f}/{pitch_deg:.0f}/{yaw_deg:.0f} deg",
@@ -449,7 +456,9 @@ class aruco_camera_test(rx.Node):
         self._publish_ids(ids_list)
         self.poses_pub.publish(pose_array)
         self._publish_status(status_text)
-        self.distance_pub.publish(Float32(data=distance_m if ids_list else -1.0))
+        self.distance_pub.publish(
+            Float32(data=target_distance_m if target_distance_m is not None else -1.0)
+        )
 
         if bool(self.display) or bool(self.publish_debug_image):
             cv2.putText(

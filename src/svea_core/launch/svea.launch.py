@@ -4,32 +4,36 @@ from better_launch import BetterLaunch, launch_this
 @launch_this
 def main(
     name: str = 'self',
-    is_sim: bool = True,
-    is_indoor: bool = True,
+    is_sim: bool = False,
+    is_indoor: bool = False,
     initial_pose_x: float = 0.0,
     initial_pose_y: float = 0.0,
     initial_pose_a: float = 0.0, # Yaw Angle
     ## Localization Settings
     use_localization: bool = True,
     ## Map
-    use_map: bool = True,
+    use_map: bool = False,
     map_pkg: str = 'svea_core',
     map_name: str = 'sml',
     ## Low-Level Interface Settings
     lli_serial_device: str = '/dev/serial/by-id/usb-SVEA_PX4_AUTOPILOT_0-if00',
     lli_baud_rate: int = 921600,
     ## LiDAR Settings
-    use_lidar: bool = True,
+    use_lidar: bool = False,
     ## RTK-GPS Settings
     use_rtk: bool = True,
-    rtk_device: str = '/dev/ttyACM1',
+    rtk_device: str = '/dev/serial/by-id/usb-Arduino_LLC_Arduino_MKR_WiFi_1010_C5EE644B5150484347202020FF0E0B39-if00',
     rtk_baud: int = 115200,
-    rtk_username: str = '',
-    rtk_password: str = '',
+    rtk_username: str = 'ITRL03',
+    rtk_password: str = '171488',
+    use_datum: bool = False,
+    datum_service: str = 'datum',
+    datum_file: str = '',
+    datum_data: str = '[]',
     ## External Communication
     use_zenoh: bool = False,
     ## Foxglove
-    use_foxglove: bool = True,
+    use_foxglove: bool = False,
     use_urdf: bool = False,
 ):
     bl = BetterLaunch()
@@ -51,7 +55,11 @@ def main(
                    rtk_device=rtk_device,
                    rtk_baud=rtk_baud,
                    rtk_username=rtk_username,
-                   rtk_password=rtk_password)
+                   rtk_password=rtk_password,
+                   use_datum=use_datum,
+                   datum_service=datum_service,
+                   datum_file=datum_file,
+                   datum_data=datum_data)
 
     if is_sim:
 
@@ -94,4 +102,3 @@ def main(
     if use_urdf:
         bl.include("svea_core", "visualization.launch.py",
                    name=name)
-

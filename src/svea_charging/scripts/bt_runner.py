@@ -2,7 +2,6 @@
 
 from std_msgs.msg import Bool, Float32, String
 from sensor_msgs.msg import BatteryState
-import time
 
 from rclpy.qos import (
     QoSDurabilityPolicy,
@@ -32,23 +31,23 @@ qos_pubber = QoSProfile(
 
 class bt_runner(rx.Node):
     tick_hz = rx.Parameter(20.0)
-    switch_distance_m = rx.Parameter(3.8)
-    dock_distance_m = rx.Parameter(1.6)
-    charge_done_level = rx.Parameter(95.0)
-    charge_demo_duration_s = rx.Parameter(10.0)
+    switch_distance_m = rx.Parameter(2.5)
+    docking_exit_distance_m = rx.Parameter(2.75)
+    dock_distance_m = rx.Parameter(0.622)
+    charge_start_voltage = rx.Parameter(12.2)
+    charge_done_voltage = rx.Parameter(12.6)
+    charge_voltage_confirm_s = rx.Parameter(3.0)
     charging_arm_topic = rx.Parameter("/charging_arm")
 
     dist_to_goal_topic = rx.Parameter("dist_to_goal")
     aruco_distance_topic = rx.Parameter("aruco/distance_m")
     line_status_topic = rx.Parameter("line_follower/status")
-    battery_charging_topic = rx.Parameter("/lli/battery/state")
+    battery_charging_topic = rx.Parameter("/self/mavros/battery")
 
     active_controller_pub = rx.Publisher(String, "mission/active_controller", qos_pubber)
     phase_pub = rx.Publisher(String, "mission/phase", qos_pubber)
     tree_status_pub = rx.Publisher(String, "mission/tree_status", qos_pubber)
     charging_arm_pub = rx.Publisher(Bool, charging_arm_topic, qos_pubber)
-
-    timer_function_pub = rx.Publisher(Float32, "mission/timer_function", qos_pubber)
 
     @rx.Subscriber(Float32, dist_to_goal_topic)
     def _dist_to_goal_cb(self, msg: Float32):
@@ -73,25 +72,28 @@ class bt_runner(rx.Node):
     def _battery_charging_cb(self, msg: BatteryState):
         self.bb.battery_current = float(msg.current)
         self.bb.battery_voltage = float(msg.voltage)
-        if not self.bb.charge_demo_complete:
-            self.bb.battery_level = float(msg.percentage) * 100
-        # self.get_logger().info(f'battery current: {self.bb.battery_current}')
 
     def on_startup(self):
         self.bb = MissionBlackboard(
             switch_distance_m=float(self.switch_distance_m),
+            docking_exit_distance_m=float(self.docking_exit_distance_m),
             dock_distance_m=float(self.dock_distance_m),
-            charge_done_level=float(self.charge_done_level),
-            charge_demo_duration_s=float(self.charge_demo_duration_s),
+            charge_start_voltage=float(self.charge_start_voltage),
+            charge_done_voltage=float(self.charge_done_voltage),
+            charge_voltage_confirm_s=float(self.charge_voltage_confirm_s),
         )
         self.tree = ChargingMissionTree(self.bb, self._set_charging_arm)
+        self._set_charging_arm(False)
         period = 1.0 / self.tick_hz
         self.create_timer(period, self.loop)
         self.get_logger().info(
             "BT runner started "
-            f"(switch={self.bb.switch_distance_m:.2f} m, dock={self.bb.dock_distance_m:.2f} m, "
-            f"charge_demo={self.bb.charge_demo_duration_s:.1f} s, "
-            f"charge_done={self.bb.charge_done_level:.1f}%)"
+            f"(switch={self.bb.switch_distance_m:.2f} m, "
+            f"exit={self.bb.docking_exit_distance_m:.2f} m, "
+            f"dock={self.bb.dock_distance_m:.2f} m, "
+            f"charge_start={self.bb.charge_start_voltage:.2f} V, "
+            f"charge_done={self.bb.charge_done_voltage:.2f} V, "
+            f"confirm={self.bb.charge_voltage_confirm_s:.1f} s)"
         )
 
     def _set_charging_arm(self, enabled: bool):
@@ -102,9 +104,6 @@ class bt_runner(rx.Node):
         self.active_controller_pub.publish(String(data=self.bb.active_controller))
         self.phase_pub.publish(String(data=self.bb.mission_phase))
         self.tree_status_pub.publish(String(data=status))
-        if self.bb.charging_active:
-            elapsed_s = time.monotonic() - self.bb.charge_started_at
-            self.timer_function_pub.publish(Float32(data=elapsed_s))
 
 
 

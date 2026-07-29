@@ -7,22 +7,22 @@ Reference:
 
 """
 import numpy as np
-import matplotlib.pyplot as plt
 import sys
 import pathlib
 from svea_core import rosonic as rx
-
-from svea_core.interfaces import LocalizationInterface
 
 sys.path.append(str(pathlib.Path(__file__).parent.parent.parent))
 from svea_charging.third_party.PythonRobotics.PathPlanning.CubicSpline import cubic_spline_planner
 
 # Parameters
-k = 4.0 # control gain
-Kp = 0.8  # speed proportional gain
+k = 0.28 # control gain
+Kp = 0.6  # speed proportional gain
 dt = 0.05  # [s] time difference
 L = 0.2  # [m] Wheel base of vehicle (TODO: check this value)
-max_steer = np.radians(50.0)  # [rad] max steering angle (TODO: check this value)
+max_steer = np.radians(40.0)  # [rad] physical steering limit
+max_steer_rate = np.radians(40.0)  # [rad/s] servo command slew rate
+max_velocity = 0.4  # [m/s] low-gear limit
+max_velocity_rate = 0.5  # [m/s^2] velocity command slew rate
 
 Ki = .2
 Kd = 0.01
@@ -64,7 +64,17 @@ class StanleyController:
 
         self.cross_track_error = 0.0
         self.yaw_error = 0.0
+        self.steering = 0.0
+        self.velocity_cmd = 0.0
         self.node = node
+
+    def reset_pid(self):
+        """Clear velocity-PID state so a stale integral from before a stop
+        doesn't cause a sudden lurch when the controller resumes."""
+        self.error_integral = 0.0
+        self.error_derivative = 0.0
+        self.error_prev = 0.0
+        self.velocity_cmd = 0.0
 
     def update(self, state):
         """
@@ -97,7 +107,19 @@ class StanleyController:
 
         self.error_prev = error
 
-        return Kp * error + Ki * self.error_integral + Kd * self.error_derivative
+        # The actuation interface expects a velocity setpoint, not acceleration.
+        correction = Kp * error + Ki * self.error_integral + Kd * self.error_derivative
+        requested_velocity = float(np.clip(self.target_velocity + correction,
+                                           -max_velocity, max_velocity))
+
+        # Avoid feeding an instantaneous step to the throttle (e.g. the jump
+        # straight to max_velocity on the first tick after activation).
+        max_step = max_velocity_rate * dt
+        velocity = float(np.clip(requested_velocity,
+                                 self.velocity_cmd - max_step,
+                                 self.velocity_cmd + max_step))
+        self.velocity_cmd = velocity
+        return velocity
 
 
     def stanley_control(self, cx, cy, cyaw, last_target_idx):
@@ -114,12 +136,9 @@ class StanleyController:
         if not cx or not cy or not cyaw:
             raise ValueError("Stanley path is empty; cannot compute steering.")
 
-        current_target_idx, error_front_axle = self.calc_target_index(cx, cy)
+        current_target_idx, error_front_axle = self.calc_target_index(
+            cx, cy, start_idx=last_target_idx)
         self.cross_track_error = error_front_axle # for providing output to external
-
-
-        if last_target_idx >= current_target_idx:
-            current_target_idx = last_target_idx
 
         # Path can be rebuilt every loop; keep stale indices within bounds.
         max_idx = min(len(cx), len(cy), len(cyaw)) - 1
@@ -132,8 +151,15 @@ class StanleyController:
         theta_d = np.arctan2(k * error_front_axle, max(self.v, 0.4))# added division to reduce steering angle for better stability at low speeds
         # self.node.get_logger().info(f"Theta_e: {theta_e}, Theta_d: {theta_d}")
         # Steering control
-        delta = theta_e + theta_d
-        # delta = theta_e
+        requested_delta = float(np.clip(theta_e + theta_d,
+                                        -max_steer, max_steer))
+
+        # Avoid feeding instantaneous command steps to the steering servo.
+        max_step = max_steer_rate * dt
+        delta = float(np.clip(requested_delta,
+                              self.steering - max_step,
+                              self.steering + max_step))
+        self.steering = delta
 
         return delta, current_target_idx
 
@@ -149,7 +175,7 @@ class StanleyController:
         return (angle + np.pi) % (2 * np.pi) - np.pi #reimplementation using numpy due to dependencies on scipy
 
 
-    def calc_target_index(self, cx, cy):
+    def calc_target_index(self, cx, cy, start_idx=0):
         """
         Compute index in the trajectory list of the target.
 
@@ -165,11 +191,13 @@ class StanleyController:
         fx = self.x + L * np.cos(self.yaw)
         fy = self.y + L * np.sin(self.yaw)
 
-        # Search nearest point index
+        # Search forward from the previous target. This keeps the selected path
+        # heading and the cross-track error tied to the same trajectory point.
+        start_idx = int(np.clip(start_idx, 0, min(len(cx), len(cy)) - 1))
         dx = [fx - icx for icx in cx]
         dy = [fy - icy for icy in cy]
-        d = np.hypot(dx, dy)        
-        target_idx = np.argmin(d) #(TODO: fix fallback))
+        d = np.hypot(dx[start_idx:], dy[start_idx:])
+        target_idx = start_idx + int(np.argmin(d))
 
         # Project RMS error onto front axle vector
         front_axle_vec = [-np.cos(self.yaw + np.pi / 2),
@@ -201,7 +229,7 @@ class StanleyController:
 
 
         self.cx, self.cy, self.cyaw, self.ck, self.s = cubic_spline_planner.calc_spline_course(
-            self.ax, self.ay, ds=0.2)
+            self.ax, self.ay, ds=0.05)
 
         # Keep target index valid when trajectory size changes.
         if self.cx:

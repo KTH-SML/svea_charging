@@ -1,5 +1,239 @@
 # Outdoor Localization for SVEA
 
+## ROS 2 Jazzy checkpoint (2026-07-14)
+
+This checkpoint records the first verified end-to-end outdoor localization
+pipeline on SVEA3. It is intentionally kept here while alternative datum,
+heading, and UTM configurations are evaluated.
+
+### Verified data flow
+
+```text
+PX4 wheel velocity + PX4 IMU data_raw -> local EKF -> odometry/local
+ZED-F9P NavSatFix + SWEPOS RTCM -> navsat_transform -> odometry/gps
+wheel velocity + IMU yaw rate + odometry/gps -> global EKF -> odometry/global
+local EKF:  self/odom -> self/base_link
+global EKF: map -> self/odom
+```
+
+The stack is started through `svea_core/launch/svea.launch.py`, which includes
+`svea_localization/launch/localization.launch.py` and the RTK/NTRIP launch.
+
+The following outputs were verified:
+
+- `/self/mavros/imu/data_raw`: approximately 45--47 Hz
+- `/self/mavros/wheel_odometry/velocity`: approximately 10 Hz
+- `/self/gps/fix`: approximately 1 Hz
+- `/self/gps/rtcm`: approximately 5--6 Hz
+- `/self/odometry/local`: approximately 20 Hz
+- `/self/odometry/gps`: approximately 1 Hz
+- `/self/odometry/global`: approximately 10 Hz
+- TF chain: `map -> self/odom -> self/base_link`
+
+### Checkpoint configuration
+
+- Both EKFs fuse yaw rate from `mavros/imu/data_raw`.
+- `data_raw` has no absolute orientation (`orientation_covariance[0] == -1`).
+- Both EKFs are seeded with the launch argument `initial_pose_a` in ENU
+  radians (`0=east`, `pi/2=north`).
+- `navsat_transform_node` uses `use_odometry_yaw=true` and
+  `yaw_offset=0.0`.
+- `wait_for_datum=false`; the transform is initialized from live GPS and
+  odometry data.
+- The Cartesian/UTM transform is broadcast with the Cartesian frame as the
+  parent.
+- GPS odometry is fused as absolute X/Y data with
+  `odom0_differential=false`.
+
+### Known limitations
+
+The current heading is initialized manually and then propagated using
+integrated angular velocity. It is not continuously earth-referenced and can
+drift. The upstream `robot_localization` documentation warns that
+`use_odometry_yaw` should only be used when odometry yaw is earth-referenced.
+This checkpoint is therefore a functional integration baseline, not yet a
+validated production localization solution.
+
+Occasional serial checksum errors and a startup warning about the GPS antenna
+offset have also been observed. Data publication continued after both warnings.
+
+### Smoke test
+
+```bash
+timeout 10s ros2 topic hz /self/odometry/gps
+timeout 6s ros2 topic echo /self/odometry/gps --once
+timeout 6s ros2 run tf2_ros tf2_echo map self/odom
+timeout 6s ros2 run tf2_ros tf2_echo self/odom self/base_link
+```
+
+## ROS 2 validation logbook
+
+### Working method
+
+1. Keep the checkpoint configuration unchanged while a test is running.
+2. Change one assumption or parameter at a time.
+3. Record the launch command, physical setup, terminal output, and rosbag path.
+4. Mark a test complete only after its result has been reviewed.
+5. Keep failed tests in this log; they are part of the localization history.
+
+### Current status
+
+| Area | Status | Evidence or remaining question |
+| --- | --- | --- |
+| GNSS serial link | Verified | UBX NAV-PVT and two-way MON-VER communication |
+| NTRIP/RTCM flow | Verified | SWEPOS connects and `/self/gps/rtcm` publishes |
+| PX4/MAVROS link | Verified after PX4 reset | MAVROS connected; IMU raw and wheel velocity publish |
+| Local EKF | Functionally verified | `/self/odometry/local` and `self/odom -> self/base_link` publish |
+| GPS conversion | Functionally verified | `/self/odometry/gps` publishes at approximately 1 Hz |
+| Global EKF | Functionally verified | `/self/odometry/global` and `map -> self/odom` publish |
+| Stationary stability | In progress | Position spread and yaw drift have not been measured |
+| Absolute heading | Limited | Manually initialized yaw followed by integrated yaw rate |
+| RTK carrier solution | Not verified | RTCM flow does not prove RTK float or fixed |
+| Startup ordering | Not verified | A transient GPS antenna-offset TF warning was observed |
+| Clean shutdown/restart | Not verified | RTK manager previously kept the serial port locked |
+| Fixed datum and UTM workflow | Deferred | Do not change until the baseline tests pass |
+
+### Validation sequence
+
+#### Step 1: stationary baseline — in progress
+
+Purpose:
+
+- Verify that every required topic remains active for at least 60 seconds.
+- Measure stationary GPS position spread.
+- Measure local and global odometry drift.
+- Measure yaw drift caused by integrating `data_raw`.
+- Save a repeatable baseline before changing the datum or filter settings.
+
+Physical setup:
+
+- Place the vehicle outdoors with open sky and do not move it during the test.
+- Keep the remote controller available and the vehicle disarmed.
+- Point the vehicle east and use `initial_pose_a=0.0`, or enter a measured ENU
+  heading. Do not silently use zero for another direction.
+- Record whether the PX4 had to be reset before launch.
+
+Launch in terminal A:
+
+```bash
+bl svea_core svea.launch.py --initial_pose_a 0.0
+```
+
+Wait until MAVROS is connected, NTRIP is connected, and
+`/self/odometry/gps` has started. In terminal B, run:
+
+```bash
+timeout 6s ros2 topic echo /self/mavros/state --once
+timeout 10s ros2 topic hz /self/mavros/imu/data_raw
+timeout 10s ros2 topic hz /self/mavros/wheel_odometry/velocity
+timeout 10s ros2 topic hz /self/gps/fix
+timeout 10s ros2 topic hz /self/odometry/local
+timeout 10s ros2 topic hz /self/odometry/gps
+timeout 10s ros2 topic hz /self/odometry/global
+```
+
+Record 60 seconds of stationary data:
+
+```bash
+BAG=/tmp/localization_stationary_$(date +%Y%m%d_%H%M%S)
+
+timeout --signal=INT --kill-after=5s 60s ros2 bag record \
+  -o "$BAG" \
+  /self/mavros/state \
+  /self/mavros/imu/data_raw \
+  /self/mavros/wheel_odometry/velocity \
+  /self/gps/fix \
+  /self/gps/rtcm \
+  /self/odometry/local \
+  /self/odometry/gps \
+  /self/odometry/global \
+  /diagnostics \
+  /tf \
+  /tf_static
+
+ros2 bag info "$BAG"
+echo "$BAG"
+```
+
+Result template:
+
+```text
+Date/time:
+Location and sky conditions:
+Vehicle heading and initial_pose_a:
+PX4 reset required: yes/no
+MAVROS connected: yes/no
+Bag path:
+Observed topic rates:
+Launch warnings/errors:
+GPS X/Y spread:
+Local odometry drift:
+Global odometry drift:
+Yaw change over 60 s:
+Outcome: pass/fail/inconclusive
+Notes:
+```
+
+The first run establishes measured baseline values. Numerical acceptance limits
+will be selected after reviewing that data rather than chosen without evidence.
+
+##### Step 1 run log
+
+**2026-07-14, pre-recording topic check — pass**
+
+The initial `ros2 topic hz` discovery warnings were followed by valid messages
+and are therefore treated as startup/discovery warnings, not topic failures.
+
+| Topic | Observed result |
+| --- | --- |
+| `/self/mavros/state` | Recheck passed: connected, disarmed, MANUAL |
+| `/self/mavros/imu/data_raw` | Stabilized at approximately 48.4 Hz |
+| `/self/mavros/wheel_odometry/velocity` | Approximately 10.0 Hz |
+| `/self/gps/fix` | Approximately 1.0 Hz |
+| `/self/odometry/local` | Approximately 19.9 Hz |
+| `/self/odometry/gps` | Approximately 1.0 Hz |
+| `/self/odometry/global` | Approximately 10.0 Hz |
+
+The first state request occurred before topic discovery had completed. A later
+request returned `connected: true`, `armed: false`, `manual_input: true`, and
+`mode: MANUAL`. Interpretation: the complete measurement and filter data path
+was active and the pre-recording check passed. The 60-second stationary rosbag
+is the next active test.
+
+#### Step 2: confirm the RTK carrier solution — pending
+
+Confirm whether the ZED-F9P reports no carrier solution, RTK float, or RTK
+fixed. The current `NavSatFix.status` mapping is insufficient, so this test
+requires either exposing `carrSoln` as a ROS diagnostic or inspecting NAV-PVT
+before the localization stack takes ownership of the serial port.
+
+#### Step 3: controlled motion test — pending
+
+Drive a measured straight segment, stop, turn, and return. Compare physical
+distance and heading changes with local odometry, GPS odometry, and global
+odometry. Perform this only after the stationary baseline has been reviewed.
+
+#### Step 4: startup and TF ordering — pending
+
+Repeat clean launches and check that the static sensor transforms and both EKFs
+exist before `navsat_transform_node` initializes. The test passes when the GPS
+antenna offset is applied without the transient `map -> base_link` error.
+
+#### Step 5: clean shutdown and restart — pending
+
+Stop the launch normally, confirm that no RTK, NTRIP, or MAVROS process remains,
+and immediately launch again. The test passes when both serial devices can be
+opened without force-killing old processes.
+
+#### Step 6: fixed datum and explicit UTM workflow — deferred
+
+Compare automatic startup datum with a fixed, repeatable map origin only after
+steps 1--5 have established a reliable baseline. Preserve the automatic-datum
+checkpoint as a selectable fallback.
+
+The remainder of this document describes the older ROS 1 outdoor localization
+stack and should not be treated as the current Jazzy launch procedure.
+
 ## Content
 1. [Overview](#overview)
 2. [Usage](#usage)
