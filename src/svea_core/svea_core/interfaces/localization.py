@@ -54,7 +54,15 @@ class LocalizationInterface(rx.Field):
         if not self._is_started():
             return
 
-        self._odom_msg = self.transform_odom(msg)
+        try:
+            self._odom_msg = self.transform_odom(msg)
+        except RuntimeError as e:
+            # TF tree (e.g. map <- odom from navsat_transform_node) isn't
+            # ready yet, typically only for the first message or two right
+            # after startup. Skip this update rather than killing the node.
+            self.node.get_logger().warn(f"Skipping odometry update: {e}")
+            return
+
         for cb in self._odom_callbacks:
             if not rclpy.ok():
                 break
