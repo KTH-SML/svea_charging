@@ -5,31 +5,51 @@
     # earlier and leads to a relocated charging station (station moved for
     # this branch's docking integration work).
     #
-    # Straight leg 1 rectified to 1m spacing exactly on the line between the
-    # trusted start point and the new turn vertex [23.4887, -10.1176]
-    # (registered as a single-shot /self/odometry/global read, RTK fixed,
-    # std ~0.16-0.21m).
+    # Straight leg 1 is the FIRST 23 WAYPOINTS OF to_parking_lot.yaml,
+    # reused verbatim (identical coordinates, not regenerated) per driver
+    # request — this route should match that one exactly up until the turn.
+    # Those points run at ~1m spacing along the shared start heading
+    # (~-20.8 deg) out to [21.0334, -7.9771].
     #
-    # From there: a circular fillet arc (R=4.0m, matching the ~87.2 deg turn
-    # between the incoming heading and the outgoing lead-in/station heading
-    # — steeper than to_parking_lot.yaml's ~82 deg turn, hence the larger
-    # radius) blends into a straight line (1m spacing) to the station.
+    # From there: a circular fillet arc, R=3.0m (tangent length ≈2.99m,
+    # arc length ≈4.70m). History on this number, in order:
+    #   - R=4.0m first: turned in too early / ran onto the grass before
+    #     reaching the marked turn point.
+    #   - R≈1.0m: driven for real (src/rosbags/post_turn_check_03, _05),
+    #     got physically stuck after the turn on both the old and a
+    #     freshly swapped battery — wheel_odometry read exactly 0 m/s for
+    #     50-150+ seconds while the drive channel commanded near-max
+    #     output and steering sat pinned at the hardware ceiling.
+    #   - R=1.5m: same exact failure, same physical spot
+    #     (post_turn_check_08) — three different radii all failing at the
+    #     same GPS location (~23.2-23.7, -9.0 to -10.0) is what pinned
+    #     this down as a small curb/edge in the pavement right there, not
+    #     a route-curvature problem at all. No radius fixes a physical
+    #     obstacle; R=3.0m is a driver-requested reset back toward a
+    #     gentler turn (still noticeably tighter than the original 4.0m)
+    #     while the actual fix for the curb is elsewhere (more available
+    #     drive torque - see max_velocity in stanleyController.py - not
+    #     this file). NOT yet driven at R=3.0m - re-test before trusting.
     #
-    # The outgoing heading was derived from two anchor points near the
-    # station rather than the turn vertex itself: [20.3552, -17.4492]
+    # The arc's incoming direction is the shared route's own heading; the
+    # measured turn vertex [23.4887, -10.1176] (RTK read, std ~0.16-0.21m)
+    # was projected onto that shared heading (sits ~1.13m to the side —
+    # normal GPS noise) purely to decide how far along the shared leg to
+    # place the turn.
+    #
+    # The outgoing heading (into the arc's exit / the final straight leg)
+    # comes from two anchor points near the station: [20.3552, -17.4492]
     # (lead-in point, a few meters behind the station, std ~0.16-0.20m) and
-    # [19.4899, -19.7499] (the station itself, std ~0.22-0.25m — this is a
-    # re-take; the first station read had std ~0.31-0.32m, right at the
-    # edge of "good", so it was re-measured once for a tighter fix before
-    # committing to the route. The two reads were ~0.15m apart, consistent
-    # within combined uncertainty). These two points and the turn vertex
-    # were confirmed collinear (bearing differs by <1 deg), so no separate
-    # second turn was needed — just one right turn, then dead straight into
-    # the station.
+    # [19.4899, -19.7499] (the station itself, std ~0.22-0.25m — a re-take;
+    # the first station read had std ~0.31-0.32m, right at the edge of
+    # "good", re-measured once for a tighter fix). These two points and the
+    # turn vertex were confirmed collinear (bearing differs by <1 deg), so
+    # no separate second turn was needed — just one right turn, then dead
+    # straight into the station.
     #
-    # Peak spline curvature checked at 0.293 (1/m), i.e. effective min
-    # radius ~3.42m, well clear of minimum_turning_radius below.
-    map_waypoints: "[[0.4685, -0.1614], [1.3982, -0.5635], [2.3278, -0.9655], [3.2575, -1.3676], [4.1871, -1.7697], [5.1168, -2.1718], [6.0464, -2.5738], [6.9761, -2.9759], [7.9057, -3.378], [8.8354, -3.7801], [9.765, -4.1821], [10.6947, -4.5842], [11.6243, -4.9863], [12.554, -5.3884], [13.4836, -5.7904], [14.4133, -6.1925], [15.3429, -6.5946], [16.2726, -6.9967], [17.2022, -7.3987], [18.1319, -7.8008], [19.0615, -8.2029], [19.9912, -8.605], [20.4429, -8.8354], [20.8619, -9.1211], [21.2413, -9.4575], [21.5751, -9.8392], [21.858, -10.2601], [22.0853, -10.7133], [22.2535, -11.1917], [22.3598, -11.6876], [22.4025, -12.1929], [22.3809, -12.6995], [22.2954, -13.1993], [22.1473, -13.6843], [21.7677, -14.5509], [21.3881, -15.4174], [21.0084, -16.2839], [20.6288, -17.1504], [20.2492, -18.0169], [19.8695, -18.8834], [19.4899, -19.7499]]"
+    # Peak spline curvature checked at 0.363 (1/m), i.e. effective min
+    # radius ~2.753m, clear of minimum_turning_radius below.
+    map_waypoints: "[[0.4685, -0.1614], [1.4033, -0.5167], [2.338, -0.8719], [3.2728, -1.2272], [4.2076, -1.5824], [5.1423, -1.9377], [6.0771, -2.293], [7.0119, -2.6482], [7.9466, -3.0035], [8.8814, -3.3587], [9.8162, -3.714], [10.7509, -4.0693], [11.6857, -4.4245], [12.6205, -4.7798], [13.5552, -5.135], [14.49, -5.4903], [15.4248, -5.8456], [16.3595, -6.2008], [17.2943, -6.5561], [18.2291, -6.9113], [19.1638, -7.2666], [20.0986, -7.6219], [21.0334, -7.9771], [21.0951, -8.0006], [21.5648, -8.2276], [21.9882, -8.5327], [22.3522, -8.9065], [22.646, -9.3377], [22.8607, -9.8133], [22.9896, -10.3188], [23.0291, -10.8391], [22.9778, -11.3584], [22.8373, -11.8609], [22.4653, -12.7374], [22.0934, -13.614], [21.7215, -14.4906], [21.3495, -15.3671], [20.9776, -16.2437], [20.6057, -17.1203], [20.2338, -17.9968], [19.8618, -18.8734], [19.4899, -19.7499]]"
 
     target_velocity: 0.20
     turn_velocity: 0.12
