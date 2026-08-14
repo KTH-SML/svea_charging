@@ -18,7 +18,7 @@ class LidarRayPublisher(Node):
 
         self.scan_sub = self.create_subscription(
             LaserScan,
-            'scan',
+            '/self/scan',
             self.scan_callback,
             10
         )
@@ -34,7 +34,7 @@ class LidarRayPublisher(Node):
         points = []
 
         for i, r in enumerate(ranges):
-            if math.isnan(r) or math.isinf(r) or r <= 0.0:
+            if math.isnan(r) or math.isinf(r) or r <= 0.0 or r > 1.2:
                 continue
 
             angle = angle_min + (i * angle_increment)
