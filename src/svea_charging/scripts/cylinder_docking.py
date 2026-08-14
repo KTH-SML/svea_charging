@@ -72,15 +72,15 @@ class cylinder_docking(rx.Node):
     # =========================================================================
     # PERCEPTION & LANDMARK EXTRACTION
     # =========================================================================
-    max_detection_distance_m = rx.Parameter(300.5)
+    max_detection_distance_m = rx.Parameter(1.5)
     min_cluster_points = rx.Parameter(2)
 
     # =========================================================================
     # LATERAL (STEERING) CONTROLLER
     # =========================================================================
-    steering_kp = rx.Parameter(3.0)
-    steering_ki = rx.Parameter(1.0)
-    steering_kd = rx.Parameter(0.0)
+    steering_kp = rx.Parameter(0.7)
+    steering_ki = rx.Parameter(0.05)
+    steering_kd = rx.Parameter(0.05)
     steering_limit_rad = rx.Parameter(0.6)
     lost_cylinders_steering_rad = rx.Parameter(0.0)
 
@@ -89,32 +89,33 @@ class cylinder_docking(rx.Node):
     # =========================================================================
     # --- Velocity Limits & Cruising ---
     target_velocity = rx.Parameter(0.4)            # [m/s] Nominal cruising speed during platform approach
-    max_velocity = rx.Parameter(1.0)               # [m/s] Hard global cap for forward speed
-    max_backup_velocity = rx.Parameter(0.3)        # [m/s] Hard speed cap when reversing during overshoot recovery
+    max_velocity = rx.Parameter(0.4)               # [m/s] Hard global cap for forward speed
+    max_backup_velocity = rx.Parameter(0.35)        # [m/s] Hard speed cap when reversing during overshoot recovery
 
     # --- Distance & Dock Target Thresholds ---
     dock_target_angle_deg = rx.Parameter(90.0)     # [deg] Target cylinder angle representing the final dock stop
-    dock_tolerance_deg = rx.Parameter(1.5)         # [deg] Allowed angle error margin to declare "docked" (0 m/s)
-    platform_transition_angle_deg = rx.Parameter(45.0) # [deg] Threshold angle separating "ramp" phase from "approach" phase
+    dock_tolerance_deg = rx.Parameter(2.0)         # [deg] Allowed angle error margin to declare "docked" (0 m/s)
+    platform_transition_angle_deg = rx.Parameter(25.0) # [deg] Threshold angle separating "ramp" phase from "approach" phase
     dock_search_half_width_deg = rx.Parameter(1.0) # [deg] Hysteresis deadband to prevent chatter when switching forward/reverse
+    linear_threshold_deg = rx.Parameter(5.0)       # [deg] Threshold angle below which velocity scales linearly (above this, sqrt profile)
 
     # --- Speed Profile & Motion Dynamics ---
     ramp_min_velocity = rx.Parameter(0.35)         # [m/s] Minimum velocity enforced on ramp to prevent stalling
-    approach_deceleration_mps2 = rx.Parameter(0.8) # [m/s²] Deceleration rate used to compute smooth stopping curve (v = √(2ad))
-    velocity_command_slew_mps2 = rx.Parameter(0.7) # [m/s²] Maximum allowed acceleration/jerk step per frame (slew filter)
+    approach_deceleration_mps2 = rx.Parameter(0.1) # [m/s²] Deceleration rate used to compute smooth stopping curve (v = √(2ad))
+    velocity_command_slew_mps2 = rx.Parameter(1.0) # [m/s²] Maximum allowed acceleration/jerk step per frame (slew filter)
 
     # --- Motor Deadband / Anti-Stall Clamps ---
-    min_forward_command = rx.Parameter(0.25)       # [m/s] Minimum command output to overcome forward motor static friction
-    min_backup_command = rx.Parameter(0.3)         # [m/s] Minimum command output to overcome reverse motor static friction
+    min_forward_command = rx.Parameter(0.3)       # [m/s] Minimum command output to overcome forward motor static friction
+    min_backup_command = rx.Parameter(0.35)         # [m/s] Minimum command output to overcome reverse motor static friction
 
     # --- Direction Switching & Settling Delays ---
     reverse_neutral_time_s = rx.Parameter(0.25)    # [s] Extra neutral pause added specifically when changing into reverse
     dock_settle_time_s = rx.Parameter(0.30)        # [s] Zero-velocity pause duration during direction changes (prevents gear shock)
 
     # --- Velocity PID Gains & Anti-Windup ---
-    velocity_kp = rx.Parameter(0.35)               # Proportional gain for speed tracking error (desired_vel - measured_vel)
-    velocity_ki = rx.Parameter(0.15)               # Integral gain for steady-state speed tracking
-    velocity_kd = rx.Parameter(0.5)                # Derivative gain to damp rapid speed oscillations
+    velocity_kp = rx.Parameter(0.1)               # Proportional gain for speed tracking error (desired_vel - measured_vel)
+    velocity_ki = rx.Parameter(0.0)               # Integral gain for steady-state speed tracking
+    velocity_kd = rx.Parameter(0.0)                # Derivative gain to damp rapid speed oscillations
     velocity_integral_limit = rx.Parameter(0.3)    # Anti-windup cap applied to velocity error integrator
 
     # =========================================================================
@@ -127,7 +128,8 @@ class cylinder_docking(rx.Node):
 
     steering_cmd_pub = rx.Publisher(Float32, steering_cmd_topic)
     velocity_cmd_pub = rx.Publisher(Float32, velocity_cmd_topic)
-    angular_error_pub = rx.Publisher(Float32, "cylinder_docking/angular_error_rad")
+    angular_error_pub = rx.Publisher(Float32, "cylinder_docking/angular_error_deg")
+    opening_angle_pub = rx.Publisher(Float32, "cylinder_docking/opening_angle_deg")
     status_pub = rx.Publisher(String, "cylinder_docking/status")
     desired_velocity_pub = rx.Publisher(Float32, "cylinder_docking/desired_velocity_mps")
     measured_velocity_pub = rx.Publisher(Float32, "cylinder_docking/measured_velocity_mps")
@@ -176,14 +178,15 @@ class cylinder_docking(rx.Node):
         valid_mask = (
             np.isfinite(ranges) & 
             (ranges >= min_dist) & 
-            (ranges <= max_dist)
+            (ranges <= max_dist) & 
+            (np.abs(angles) <= np.deg2rad(110.0))
         )
 
         valid_ranges = ranges[valid_mask]
         valid_angles = angles[valid_mask]
-        
+
         if len(valid_ranges) < int(self.min_cluster_points) * 2:
-            self.get_logger().warn(
+            self.get_logger().info(
                 f"1. Not enough valid points detected"
             )
             self.cylinders_detected = False
@@ -203,7 +206,7 @@ class cylinder_docking(rx.Node):
         min_pts = int(self.min_cluster_points)
 
         if len(x_left) < min_pts or len(x_right) < min_pts:
-            self.get_logger().warn(
+            self.get_logger().info(
                 f"2. Not enough points for left or right cylinder")
             self.cylinders_detected = False
             return
@@ -275,10 +278,6 @@ class cylinder_docking(rx.Node):
             phase = "ramp"
         
         else:
-            deceleration = max(float(self.approach_deceleration_mps2), 1e-3)
-            angle_error_rad = np.deg2rad(max(abs(angle_error) - tolerance, 0.0))
-            profile_speed = np.sqrt(2.0 * deceleration * angle_error_rad)
-            
             search_half_width = max(float(self.dock_search_half_width_deg), 0.0)
             if self.dock_search_direction == 0:
                 self.dock_search_direction = 1 if angle_error >= 0.0 else -1
@@ -297,6 +296,19 @@ class cylinder_docking(rx.Node):
                 self.previous_velocity_command = 0.0
                 self._publish_velocity_debug(0.0, vel, angle_error, "dock_settle")
                 return 0.0
+
+            # Smooth Kinematic Profile (Linear near zero, sqrt further away)
+            deceleration = max(float(self.approach_deceleration_mps2), 1e-3)
+            error_deg_mag = max(abs(angle_error) - tolerance, 0.0)
+
+            kp_approach = np.sqrt(2.0 * deceleration / max(np.deg2rad(self.linear_threshold_deg), 1e-4))
+
+            if error_deg_mag <= self.linear_threshold_deg:
+                profile_speed = kp_approach * np.deg2rad(error_deg_mag)
+            else:
+                profile_speed = np.sqrt(
+                    2.0 * deceleration * np.deg2rad(error_deg_mag)
+                )
 
             if self.dock_search_direction > 0:
                 desired_velocity = min(base_velocity, profile_speed)
@@ -336,6 +348,7 @@ class cylinder_docking(rx.Node):
             )
         )
 
+        # To avoid stalling 
         if phase == "platform_approach":
             velocity_command = max(
                 velocity_command,
@@ -424,17 +437,18 @@ class cylinder_docking(rx.Node):
 
         steering = self._calculate_steering(angular_error, theta_L, theta_R, dt)
         velocity = self._calculate_velocity(opening_angle_deg, dt)
-        """self.get_logger().info(
-            f"Steering: {steering:.3f} rad, Velocity: {velocity:.3f} m/s, "
-        #    f"Angular Error: {angular_error:.3f} rad, Opening Angle: {opening_angle_deg:.2f} deg"
-        )"""
+
+        self.get_logger().info(
+            f"2. Steering: {steering:.3f} rad, Velocity: {velocity:.3f} m/s"
+        )
 
         self.steering_cmd_pub.publish(Float32(data=float(steering)))
         self.velocity_cmd_pub.publish(Float32(data=float(velocity)))
         
-        self.angular_error_pub.publish(Float32(data=float(angular_error)))
+        self.angular_error_pub.publish(Float32(data=float(np.degrees(angular_error))))
+        self.opening_angle_pub.publish(Float32(data=float(opening_angle_deg)))
         self.status_pub.publish(String(data=self._get_status_text(velocity)))
-        self.actuation.send_control(steering, velocity)
+        self.actuation.send_control(steering, -velocity)
 
     def _get_status_text(self, velocity: float) -> str:
         if velocity < 0.0:
