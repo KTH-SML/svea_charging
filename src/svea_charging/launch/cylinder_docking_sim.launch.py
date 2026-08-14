@@ -22,6 +22,7 @@ def main(
             "svea_core", 
             "svea.launch.py",
             is_sim=is_sim, # False
+            is_indoor=True, # lidar is only launched by localization.launch.py when indoor
             map_name=MAP_NAME,
             initial_pose_x=initial_pose_x,
             initial_pose_y=initial_pose_y,
