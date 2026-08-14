@@ -19,7 +19,7 @@ def main(
     lli_serial_device: str = '/dev/serial/by-id/usb-SVEA_PX4_AUTOPILOT_0-if00',
     lli_baud_rate: int = 921600,
     ## LiDAR Settings
-    use_lidar: bool = False,
+    use_lidar: bool = True,
     ## RTK-GPS Settings
     use_rtk: bool = True,
     rtk_device: str = '/dev/serial/by-id/usb-Arduino_LLC_Arduino_MKR_WiFi_1010_C5EE644B5150484347202020FF0E0B39-if00',
@@ -33,7 +33,7 @@ def main(
     ## External Communication
     use_zenoh: bool = False,
     ## Foxglove
-    use_foxglove: bool = False,
+    use_foxglove: bool = True,
     use_urdf: bool = False,
 ):
     bl = BetterLaunch()
