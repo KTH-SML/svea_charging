@@ -7,7 +7,7 @@ from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Float32, String
 
 from svea_core import rosonic as rx
-from svea_core.interfaces import LocalizationInterface, ActuationInterface
+from svea_core.interfaces import LocalizationInterface
 from rclpy.qos import (
     QoSProfile,
     QoSReliabilityPolicy,
@@ -139,7 +139,14 @@ class cylinder_docking(rx.Node):
     left_cylinder_pub = rx.Publisher(Point, "cylinder_docking/left_cylinder")
     right_cylinder_pub = rx.Publisher(Point, "cylinder_docking/right_cylinder")
 
-    actuation = ActuationInterface()
+
+    @rx.Subscriber(String, 'mission/active_controller', qos_pubber)
+    def _mission_active(self, msg: String):
+        was_active = self.active_controller == str(self.controller_name)
+        self.active_controller = msg.data
+        is_active = self.active_controller == str(self.controller_name)
+        if was_active != is_active:
+            self._reset_velocity_controller()
 
     def on_startup(self):
         self.left_cylinder_pos = None
@@ -402,6 +409,9 @@ class cylinder_docking(rx.Node):
         return self.get_clock().now().nanoseconds * 1e-9
 
     def loop(self):
+        if self.active_controller != str(self.controller_name):
+            return
+        
         if not self.cylinders_detected:
             self.get_logger().warn("Cylinders lost, stopping the robot.")
             self.status_pub.publish(String(data="cylinders_lost"))
@@ -412,7 +422,6 @@ class cylinder_docking(rx.Node):
                     Float32(data=float(self.lost_cylinders_steering_rad))
                 )
                 self.velocity_cmd_pub.publish(Float32(data=0.0))
-            self.actuation.send_control(float(self.lost_cylinders_steering_rad), 0.0)
             return
 
         dt = self.dt_s
@@ -448,7 +457,6 @@ class cylinder_docking(rx.Node):
         self.angular_error_pub.publish(Float32(data=float(np.degrees(angular_error))))
         self.opening_angle_pub.publish(Float32(data=float(opening_angle_deg)))
         self.status_pub.publish(String(data=self._get_status_text(velocity)))
-        self.actuation.send_control(steering, -velocity)
 
     def _get_status_text(self, velocity: float) -> str:
         if velocity < 0.0:
