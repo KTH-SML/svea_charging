@@ -24,16 +24,21 @@ class MissionBlackboard:
     charger_visible: bool = False
     
     # --- Navigation and Docking Parameters ---
-    dist_to_station: float | None = None
+    dist_to_switching_point: float | None = None
     aruco_distance: float | None = None
     
     # --- Cylinders Parameters ---
     cylinders_visible: bool = False
+    cylinder_distance: float | None = None
+
+    # --- Docking State Latch ---
+    docking_engaged: bool = False
 
     # --- Thresholds and Operational Parameters ---
-    switch_distance_m: float = 2.5
+    gps_switch_distance_m: float = 1.5
+    cylinder_switch_distance_m: float = 1.2
     docking_exit_distance_m: float = 2.75
-    dock_distance_m: float = 0.622
+    cylinder_arm_deploy_distance_m: float = 0.3
     charge_start_voltage: float = 12.2
     charge_done_voltage: float = 12.6
     charge_voltage_confirm_s: float = 3.0
@@ -118,19 +123,21 @@ class ChargingMissionTree:
         return NodeStatus.FAILURE
 
     def is_near_docking_zone(self) -> str:
-        distance = self.bb.aruco_distance
-        if self.bb.active_controller == "cylinder_docking":
-            if distance is None or distance <= self.bb.docking_exit_distance_m:
-                self.bb.mission_phase = "docking"
-                return NodeStatus.SUCCESS
-            self.bb.mission_phase = "approach"
-            return NodeStatus.FAILURE
-
-        if distance is None:
-            return NodeStatus.FAILURE
-        if distance <= self.bb.switch_distance_m:
+        if self.bb.docking_engaged:
             self.bb.mission_phase = "docking"
             return NodeStatus.SUCCESS
+
+        gps_dist = self.bb.dist_to_switching_point
+        cyl_dist = self.bb.cylinder_distance
+
+        if (
+            gps_dist is not None and gps_dist <= self.bb.gps_switch_distance_m
+            and cyl_dist is not None and cyl_dist <= self.bb.cylinder_switch_distance_m
+        ):
+            self.bb.docking_engaged = True
+            self.bb.mission_phase = "docking"
+            return NodeStatus.SUCCESS
+
         return NodeStatus.FAILURE
 
     def run_stanley_approach(self) -> str:
@@ -150,15 +157,18 @@ class ChargingMissionTree:
         self.bb.active_controller = "cylinder_docking"
         self.bb.mission_phase = "docking"
 
-        if self.bb.charger_visible and self.bb.cylinders_visible:
-            if self.bb.aruco_distance is not None and self.bb.aruco_distance <= .91:
+        if self.bb.cylinders_visible:
+            if (
+                self.bb.cylinder_distance is not None
+                and self.bb.cylinder_distance <= self.bb.cylinder_arm_deploy_distance_m
+            ):
                 self.set_charging_arm(True)
             else:
                 self.set_charging_arm(False)
             return NodeStatus.RUNNING
 
         self.set_charging_arm(False)
-        return NodeStatus.FAILURE
+        return NodeStatus.RUNNING
 
     def _current_running_node_name(self) -> str:
         current = self._deepest_running_node(self.tree)
@@ -222,4 +232,5 @@ class ChargingMissionTree:
         self.bb.active_controller = "stanley"
         self.bb.mission_phase = "exit_station"
         self.bb.charge_voltage_reached_at = None
+        self.bb.docking_engaged = False
         return NodeStatus.RUNNING

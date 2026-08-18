@@ -45,6 +45,7 @@ class bt_runner(rx.Node):
 
     # --- Cylinder-specific parameters ---
     cylinder_status_topic = rx.Parameter("cylinder_docking/status")
+    cylinder_distance_topic = rx.Parameter("cylinder_docking/cylinder_distance_m")
 
     active_controller_pub = rx.Publisher(String, "mission/active_controller", qos_pubber)
     phase_pub = rx.Publisher(String, "mission/phase", qos_pubber)
@@ -68,6 +69,11 @@ class bt_runner(rx.Node):
     @rx.Subscriber(String, cylinder_status_topic, qos_pubber)
     def _cylinder_status_cb(self, msg: String):
         self.bb.cylinders_visible = msg.data not in {"cylinder_lost", "idle"}
+
+    @rx.Subscriber(Float32, cylinder_distance_topic, qos_pubber)
+    def _cylinder_distance_cb(self, msg: Float32):
+        self.bb.cylinder_distance = float(msg.data)
+        
 
     @rx.Subscriber(BatteryState, battery_charging_topic, battery_qos)
     def _battery_charging_cb(self, msg: BatteryState):

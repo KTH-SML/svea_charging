@@ -131,6 +131,7 @@ class cylinder_docking(rx.Node):
     angular_error_pub = rx.Publisher(Float32, "cylinder_docking/angular_error_deg")
     opening_angle_pub = rx.Publisher(Float32, "cylinder_docking/opening_angle_deg")
     status_pub = rx.Publisher(String, "cylinder_docking/status")
+    cylinder_distance_pub = rx.Publisher(Float32, "cylinder_docking/cylinder_distance_m")
     desired_velocity_pub = rx.Publisher(Float32, "cylinder_docking/desired_velocity_mps")
     measured_velocity_pub = rx.Publisher(Float32, "cylinder_docking/measured_velocity_mps")
     angle_error_deg_pub = rx.Publisher(Float32, "cylinder_docking/angle_error_deg")
@@ -428,8 +429,8 @@ class cylinder_docking(rx.Node):
         
         x_L, y_L = self.left_cylinder_pos
         x_R, y_R = self.right_cylinder_pos
+        cylinder_distance = (x_L + x_R) / 2.0
 
-        
         theta_L = np.arctan2(y_L, x_L)
         theta_R = np.arctan2(y_R, x_R)
         """self.get_logger().info(
@@ -447,9 +448,9 @@ class cylinder_docking(rx.Node):
         steering = self._calculate_steering(angular_error, theta_L, theta_R, dt)
         velocity = self._calculate_velocity(opening_angle_deg, dt)
 
-        self.get_logger().info(
-            f"2. Steering: {steering:.3f} rad, Velocity: {velocity:.3f} m/s"
-        )
+        # self.get_logger().info(
+        #     f"2. Steering: {steering:.3f} rad, Velocity: {velocity:.3f} m/s"
+        # )
 
         self.steering_cmd_pub.publish(Float32(data=float(steering)))
         self.velocity_cmd_pub.publish(Float32(data=float(velocity)))
@@ -457,6 +458,7 @@ class cylinder_docking(rx.Node):
         self.angular_error_pub.publish(Float32(data=float(np.degrees(angular_error))))
         self.opening_angle_pub.publish(Float32(data=float(opening_angle_deg)))
         self.status_pub.publish(String(data=self._get_status_text(velocity)))
+        self.cylinder_distance_pub.publish(Float32(data=float(cylinder_distance)))
 
     def _get_status_text(self, velocity: float) -> str:
         if velocity < 0.0:
