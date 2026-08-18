@@ -2,6 +2,7 @@
 
 from std_msgs.msg import Bool, Float32, String
 from sensor_msgs.msg import BatteryState
+from nav_msgs.msg import Odometry
 
 from rclpy.qos import (
     QoSDurabilityPolicy,
@@ -38,10 +39,13 @@ class bt_runner(rx.Node):
     charge_done_voltage = rx.Parameter(12.6)
     charge_voltage_confirm_s = rx.Parameter(3.0)
     charging_arm_topic = rx.Parameter("/charging_arm")
+    x_switching_point = rx.Parameter(23.47)
+    y_switching_point = rx.Parameter(-21.63)
 
     dist_to_goal_topic = rx.Parameter("dist_to_goal")
     aruco_distance_topic = rx.Parameter("aruco/distance_m")
     battery_charging_topic = rx.Parameter("/self/mavros/battery")
+    odometry_topic = rx.Parameter("/odometry/global")
 
     # --- Cylinder-specific parameters ---
     cylinder_status_topic = rx.Parameter("cylinder_docking/status")
@@ -56,6 +60,15 @@ class bt_runner(rx.Node):
     def _dist_to_goal_cb(self, msg: Float32):
         self.bb.dist_to_station = float(msg.data)
 
+    @rx.Subscriber(Odometry, odometry_topic)
+    def _odometry_cb(self, msg: Odometry):
+        x = float(msg.pose.pose.position.x)
+        y = float(msg.pose.pose.position.y)
+        x_target = float(self.x_switching_point)
+        y_target = float(self.y_switching_point)
+        distance_to_switching_point = ((x - x_target) ** 2 + (y - y_target) ** 2) ** 0.5
+        self.bb.dist_to_switching_point = distance_to_switching_point
+
     @rx.Subscriber(Float32, aruco_distance_topic)
     def _aruco_distance_cb(self, msg: Float32):
         distance = float(msg.data)
@@ -68,7 +81,7 @@ class bt_runner(rx.Node):
 
     @rx.Subscriber(String, cylinder_status_topic, qos_pubber)
     def _cylinder_status_cb(self, msg: String):
-        self.bb.cylinders_visible = msg.data not in {"cylinder_lost", "idle"}
+        self.bb.cylinders_visible = msg.data not in {"cylinders_lost", "idle"}
 
     @rx.Subscriber(Float32, cylinder_distance_topic, qos_pubber)
     def _cylinder_distance_cb(self, msg: Float32):
@@ -82,9 +95,7 @@ class bt_runner(rx.Node):
 
     def on_startup(self):
         self.bb = MissionBlackboard(
-            switch_distance_m=float(self.switch_distance_m),
             docking_exit_distance_m=float(self.docking_exit_distance_m),
-            dock_distance_m=float(self.dock_distance_m),
             charge_start_voltage=float(self.charge_start_voltage),
             charge_done_voltage=float(self.charge_done_voltage),
             charge_voltage_confirm_s=float(self.charge_voltage_confirm_s),
