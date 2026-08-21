@@ -55,6 +55,7 @@ class bt_runner(rx.Node):
     phase_pub = rx.Publisher(String, "mission/phase", qos_pubber)
     tree_status_pub = rx.Publisher(String, "mission/tree_status", qos_pubber)
     charging_arm_pub = rx.Publisher(Bool, charging_arm_topic, qos_pubber)
+    gps_distance_pub = rx.Publisher(Float32, "mission/gps_distance", qos_pubber)
 
     @rx.Subscriber(Float32, dist_to_goal_topic)
     def _dist_to_goal_cb(self, msg: Float32):
@@ -68,6 +69,7 @@ class bt_runner(rx.Node):
         y_target = float(self.y_switching_point)
         distance_to_switching_point = ((x - x_target) ** 2 + (y - y_target) ** 2) ** 0.5
         self.bb.dist_to_switching_point = distance_to_switching_point
+        self.gps_distance_pub.publish(Float32(data=float(distance_to_switching_point)))
 
     @rx.Subscriber(Float32, aruco_distance_topic)
     def _aruco_distance_cb(self, msg: Float32):
@@ -104,15 +106,6 @@ class bt_runner(rx.Node):
         self._set_charging_arm(False)
         period = 1.0 / self.tick_hz
         self.create_timer(period, self.loop)
-        self.get_logger().info(
-            "BT runner started "
-            f"(switch={self.bb.switch_distance_m:.2f} m, "
-            f"exit={self.bb.docking_exit_distance_m:.2f} m, "
-            f"dock={self.bb.dock_distance_m:.2f} m, "
-            f"charge_start={self.bb.charge_start_voltage:.2f} V, "
-            f"charge_done={self.bb.charge_done_voltage:.2f} V, "
-            f"confirm={self.bb.charge_voltage_confirm_s:.1f} s)"
-        )
 
     def _set_charging_arm(self, enabled: bool):
         self.charging_arm_pub.publish(Bool(data=enabled))

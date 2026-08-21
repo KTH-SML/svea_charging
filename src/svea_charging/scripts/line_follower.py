@@ -66,8 +66,8 @@ class LineFollowerLocalizationInterface(LocalizationInterface):
 class line_follower(rx.Node):
     dt = rx.Parameter(0.05)
     image_topic = rx.Parameter("/svea67/image_raw")
-    target_velocity = rx.Parameter(0.4)
-    max_velocity = rx.Parameter(0.45)
+    target_velocity = rx.Parameter(0.26)
+    max_velocity = rx.Parameter(0.4)
     stop_on_lost_line = rx.Parameter(True)
     controller_name = rx.Parameter("line_follower")
     active_controller = rx.Parameter('idle')
@@ -82,9 +82,16 @@ class line_follower(rx.Node):
     # Outdoor defaults per LINE_FOLLOWER_CAMERA_HANDOFF.md problem 2: indoor
     # thresholds required S>=100, but the yellow line outdoors measured
     # S~50-90 (H~19-23, V~176-189). Re-derive per-robot before trusting these.
-    lower_h = rx.Parameter(15)
-    lower_s = rx.Parameter(40)
-    lower_v = rx.Parameter(80)
+    # lower_h = rx.Parameter(15)
+    # lower_s = rx.Parameter(40)
+    # lower_v = rx.Parameter(80)
+    # upper_h = rx.Parameter(35)
+    # upper_s = rx.Parameter(255)
+    # upper_v = rx.Parameter(255)
+
+    lower_h = rx.Parameter(20)
+    lower_s = rx.Parameter(100)
+    lower_v = rx.Parameter(100)
     upper_h = rx.Parameter(35)
     upper_s = rx.Parameter(255)
     upper_v = rx.Parameter(255)
@@ -94,27 +101,27 @@ class line_follower(rx.Node):
     min_contour_area = rx.Parameter(120)
     steering_kp = rx.Parameter(1.5)
     steering_ki = rx.Parameter(.4)
-    steering_kd = rx.Parameter(0.02)
+    steering_kd = rx.Parameter(0.0)
     steering_limit_rad = rx.Parameter(0.6)
     lost_line_steering_rad = rx.Parameter(0.0)
     # Constant pixel offset added to the image center used for steering
     # error. Compensates a camera mount that's slightly off the vehicle's
     # true centerline (shows up as a consistent sideways offset while
     # tracking a straight line). See loop().
-    steering_bias_px = rx.Parameter(20.0)
+    steering_bias_px = rx.Parameter(50.0)
     velocity_scale_from_error = rx.Parameter(False)
 
     use_aruco_stop = rx.Parameter(True)
     aruco_distance_topic = rx.Parameter("aruco/distance_m")
     aruco_stop_distance_m = rx.Parameter(0.622)
     platform_transition_distance_m = rx.Parameter(1.0)
-    ramp_min_velocity = rx.Parameter(0.4)
+    ramp_min_velocity = rx.Parameter(0.3)
     approach_deceleration_mps2 = rx.Parameter(0.6)
     # Keep correcting until the behaviour tree detects charging. Set this above
     # zero only if a stationary acceptance band is desired.
     dock_tolerance_m = rx.Parameter(0.0)
-    aruco_velocity_kp = rx.Parameter(0.4)
-    aruco_velocity_ki = rx.Parameter(0.15)
+    aruco_velocity_kp = rx.Parameter(0.35)
+    aruco_velocity_ki = rx.Parameter(0.03)
     aruco_velocity_kd = rx.Parameter(0.0)
     aruco_velocity_integral_limit = rx.Parameter(0.3)
     aruco_max_backup_velocity = rx.Parameter(0.3)

@@ -35,10 +35,10 @@ class MissionBlackboard:
     docking_engaged: bool = False
 
     # --- Thresholds and Operational Parameters ---
-    gps_switch_distance_m: float = 1.5
+    gps_switch_distance_m: float = 100.5
     cylinder_switch_distance_m: float = 1.2
     docking_exit_distance_m: float = 2.75
-    cylinder_arm_deploy_distance_m: float = 0.3
+    cylinder_arm_deploy_distance_m: float = 0.2
     charge_start_voltage: float = 12.2
     charge_done_voltage: float = 12.6
     charge_voltage_confirm_s: float = 3.0
@@ -128,11 +128,11 @@ class ChargingMissionTree:
             return NodeStatus.SUCCESS
 
         gps_dist = self.bb.dist_to_switching_point
-        cyl_dist = self.bb.cylinder_distance
+        # cyl_dist = self.bb.cylinder_distance
 
         if (
             gps_dist is not None and gps_dist <= self.bb.gps_switch_distance_m
-            and cyl_dist is not None and cyl_dist <= self.bb.cylinder_switch_distance_m
+            # and cyl_dist is not None and cyl_dist <= self.bb.cylinder_switch_distance_m
         ):
             self.bb.docking_engaged = True
             self.bb.mission_phase = "docking"

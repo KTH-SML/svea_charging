@@ -22,6 +22,15 @@ ROUTE_PRESETS = {
         route_config="params/routes/to_charging_station.yaml",
         aruco_marker_id=11,
     ),
+    # Second, alternate charging station location - same right-turn-then-
+    # straight approach, different physical station and anchor points, see
+    # to_charging_station_2.yaml for derivation. Not yet driven. Update
+    # aruco_marker_id here if this station uses a different physical
+    # marker than the others.
+    "charging_station_2": dict(
+        route_config="params/routes/to_charging_station_2.yaml",
+        aruco_marker_id=11,
+    ),
 }
 
 
@@ -30,7 +39,7 @@ def main(
     name: str = "self",
     enabled: bool = True,
     initial_pose_a: float = 2.548181,
-    route_preset: str = "parking_lot",
+    route_preset: str = "charging_station",
     route_config: str = "",
     use_datum: bool = True,
     datum_file: str = "",
@@ -56,18 +65,18 @@ def main(
     aruco_output: str = "aruco_marker.png",
     aruco_calibration_file: str = "",
     aruco_focal_length_px: float = -1.0,
-    bt_dock_distance_m: float = 0.6284449100494385,
+    bt_dock_distance_m: float = 0.6251276731491089,
     bt_switch_distance_m: float = 2.25,
     bt_docking_exit_distance_m: float = 2.75,
-    bt_charge_start_voltage: float = 12.4,
+    bt_charge_start_voltage: float = 12.6,
     bt_charge_done_voltage: float = 12.6,
     bt_charge_voltage_confirm_s: float = 3.0,
     stanley_target_velocity: float = 0.28,
-    stanley_turn_velocity: float = 0.25,
+    stanley_turn_velocity: float = 0.3,
     stanley_max_steering_rad: float = 0.35,
     control_mux_timeout_s: float = 1.0,
     camera_video_device: str = "/dev/video0",
-    apply_camera_v4l2_fix: bool = True,
+    apply_camera_v4l2_fix: bool = False,
     camera_exposure_time_absolute: int = 150,
     camera_white_balance_temperature: int = 6500,
 ):

@@ -78,9 +78,9 @@ class cylinder_docking(rx.Node):
     # =========================================================================
     # LATERAL (STEERING) CONTROLLER
     # =========================================================================
-    steering_kp = rx.Parameter(0.7)
-    steering_ki = rx.Parameter(0.05)
-    steering_kd = rx.Parameter(0.05)
+    steering_kp = rx.Parameter(0.8)
+    steering_ki = rx.Parameter(0.08)
+    steering_kd = rx.Parameter(0.0)
     steering_limit_rad = rx.Parameter(0.6)
     lost_cylinders_steering_rad = rx.Parameter(0.0)
 
@@ -88,7 +88,7 @@ class cylinder_docking(rx.Node):
     # LONGITUDINAL (SPEED) CONTROLLER PARAMETERS
     # =========================================================================
     # --- Velocity Limits & Cruising ---
-    target_velocity = rx.Parameter(0.4)            # [m/s] Nominal cruising speed during platform approach
+    target_velocity = rx.Parameter(0.25)            # [m/s] Nominal cruising speed during platform approach
     max_velocity = rx.Parameter(0.4)               # [m/s] Hard global cap for forward speed
     max_backup_velocity = rx.Parameter(0.35)        # [m/s] Hard speed cap when reversing during overshoot recovery
 
@@ -100,8 +100,8 @@ class cylinder_docking(rx.Node):
     linear_threshold_deg = rx.Parameter(5.0)       # [deg] Threshold angle below which velocity scales linearly (above this, sqrt profile)
 
     # --- Speed Profile & Motion Dynamics ---
-    ramp_min_velocity = rx.Parameter(0.35)         # [m/s] Minimum velocity enforced on ramp to prevent stalling
-    approach_deceleration_mps2 = rx.Parameter(0.1) # [m/s²] Deceleration rate used to compute smooth stopping curve (v = √(2ad))
+    ramp_min_velocity = rx.Parameter(0.3)         # [m/s] Minimum velocity enforced on ramp to prevent stalling
+    approach_deceleration_mps2 = rx.Parameter(0.05) # [m/s²] Deceleration rate used to compute smooth stopping curve (v = √(2ad))
     velocity_command_slew_mps2 = rx.Parameter(1.0) # [m/s²] Maximum allowed acceleration/jerk step per frame (slew filter)
 
     # --- Motor Deadband / Anti-Stall Clamps ---
@@ -113,8 +113,8 @@ class cylinder_docking(rx.Node):
     dock_settle_time_s = rx.Parameter(0.30)        # [s] Zero-velocity pause duration during direction changes (prevents gear shock)
 
     # --- Velocity PID Gains & Anti-Windup ---
-    velocity_kp = rx.Parameter(0.1)               # Proportional gain for speed tracking error (desired_vel - measured_vel)
-    velocity_ki = rx.Parameter(0.0)               # Integral gain for steady-state speed tracking
+    velocity_kp = rx.Parameter(0.5)               # Proportional gain for speed tracking error (desired_vel - measured_vel)
+    velocity_ki = rx.Parameter(0.01)               # Integral gain for steady-state speed tracking
     velocity_kd = rx.Parameter(0.0)                # Derivative gain to damp rapid speed oscillations
     velocity_integral_limit = rx.Parameter(0.3)    # Anti-windup cap applied to velocity error integrator
 
@@ -194,9 +194,9 @@ class cylinder_docking(rx.Node):
         valid_angles = angles[valid_mask]
 
         if len(valid_ranges) < int(self.min_cluster_points) * 2:
-            self.get_logger().info(
-                f"1. Not enough valid points detected"
-            )
+            # self.get_logger().info(
+            #     f"1. Not enough valid points detected"
+            # )
             self.cylinders_detected = False
             return
 
@@ -214,8 +214,8 @@ class cylinder_docking(rx.Node):
         min_pts = int(self.min_cluster_points)
 
         if len(x_left) < min_pts or len(x_right) < min_pts:
-            self.get_logger().info(
-                f"2. Not enough points for left or right cylinder")
+            # self.get_logger().info(
+            #     f"2. Not enough points for left or right cylinder")
             self.cylinders_detected = False
             return
 
@@ -433,19 +433,19 @@ class cylinder_docking(rx.Node):
 
         theta_L = np.arctan2(y_L, x_L)
         theta_R = np.arctan2(y_R, x_R)
-        """self.get_logger().info(
-            f"Theta_L: {np.degrees(theta_L):.2f} deg, "
-            f"Theta_R: {np.degrees(theta_R):.2f} deg"
-        )"""
+        # self.get_logger().info(
+        #     f"Theta_L: {np.degrees(theta_L):.2f} deg, "
+        #     f"Theta_R: {np.degrees(theta_R):.2f} deg"
+        # )
 
         angular_error = theta_L + theta_R
-        """self.get_logger().info(
-            f"Angular Error: {np.degrees(angular_error):.2f} deg"
-        )"""
+        # self.get_logger().info(
+        #     f"Angular Error: {np.degrees(angular_error):.2f} deg"
+        # )
         opening_angle_rad = (theta_L - theta_R) / 2.0
         opening_angle_deg = np.degrees(opening_angle_rad)
 
-        steering = self._calculate_steering(angular_error, theta_L, theta_R, dt)
+        steering = self._calculate_steering(angular_error, theta_L, theta_R, dt) + np.deg2rad(0.5)
         velocity = self._calculate_velocity(opening_angle_deg, dt)
 
         # self.get_logger().info(

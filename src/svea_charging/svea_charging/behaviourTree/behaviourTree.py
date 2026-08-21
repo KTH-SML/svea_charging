@@ -27,7 +27,7 @@ class MissionBlackboard:
     switch_distance_m: float = 2.5
     docking_exit_distance_m: float = 2.75
     dock_distance_m: float = 0.622
-    charge_start_voltage: float = 12.2
+    charge_start_voltage: float = 12.6
     charge_done_voltage: float = 12.6
     charge_voltage_confirm_s: float = 3.0
     charge_voltage_reached_at: float | None = None
@@ -130,8 +130,8 @@ class ChargingMissionTree:
         return NodeStatus.RUNNING
 
     def is_docked(self) -> str:
-        if self.bb.battery_current > 0.0:
-            self.bb.active_controller = "idle"
+        if self.bb.battery_current > -0.7:
+            self.bb.active_controller = "docked"
             self.bb.mission_phase = "docked"
             self.bb.charging_active = True
             return NodeStatus.SUCCESS
