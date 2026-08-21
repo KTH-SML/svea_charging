@@ -99,14 +99,15 @@ def main(
                             "initial_state": ekf_initial_state},
                     remaps={"odometry/filtered": "odometry/local"})
 
+        if use_lidar:
+            with bl.group(name):
+                bl.include("svea_localization", "lidar.launch.py",
+                           lidar_ip=lidar_ip,
+                           lidar_frame=f"{name}/laser")
+
         if is_indoor:
 
             with bl.group(name):
-                if use_lidar:
-                        bl.include("svea_localization", "lidar.launch.py",
-                                   lidar_ip=lidar_ip,
-                                   lidar_frame=f"{name}/laser")
-
                 # BetterLaunch manages lifecycle nodes automatically, so no need to
                 # run lifecycle_manager manually.
                 bl.node("nav2_amcl", "amcl",
