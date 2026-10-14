@@ -16,6 +16,11 @@ def main(
     map_frame: str = 'map',
     odom_frame: str = 'odom',
     base_frame: str = 'base_link',
+    # Router mounting offset w.r.t. base_link [m, rad]. Measure on the car.
+    router_x: float = 0.0,
+    router_y: float = 0.0,
+    router_z: float = 0.0,
+    router_yaw: float = 0.0,
 ):
     bl = BetterLaunch()
 
@@ -37,3 +42,7 @@ def main(
                 name="broadcaster_lidar",
                 cmd_args=toargs(x=0.385, y=0, z=0.15, yaw=0, pitch=0, roll=0,
                                 frame_id=base_frame, child_frame_id=f"{name}/laser"))
+    bl.node("tf2_ros", "static_transform_publisher",
+                name="broadcaster_router",
+                cmd_args=toargs(x=router_x, y=router_y, z=router_z, yaw=router_yaw, pitch=0, roll=0,
+                                frame_id=base_frame, child_frame_id=f"{name}/router"))
