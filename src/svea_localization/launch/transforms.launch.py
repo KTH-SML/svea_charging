@@ -17,9 +17,9 @@ def main(
     odom_frame: str = 'odom',
     base_frame: str = 'base_link',
     # Router mounting offset w.r.t. base_link [m, rad]. Measure on the car.
-    router_x: float = 0.16,
-    router_y: float = -0.12,
-    router_z: float = 0.08,
+    router_x: float = 0.13,
+    router_y: float = 0.0,
+    router_z: float = 0.25,
     router_yaw: float = 0.0,
 ):
     bl = BetterLaunch()
@@ -34,7 +34,7 @@ def main(
     if use_gps:
         bl.node("tf2_ros", "static_transform_publisher",
                 name="broadcaster_gps",
-                cmd_args=toargs(x=0.22, y=0.07, z=0.38, yaw=0, pitch=0, roll=0,
+                cmd_args=toargs(x=0.41, y=0.04, z=0.33, yaw=0, pitch=0, roll=0,
                                 frame_id=base_frame, child_frame_id=f"{name}/gps"))
 
     if use_lidar:
