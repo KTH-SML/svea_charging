@@ -27,6 +27,9 @@ def main(
     rtk_baud: int = 115200,
     rtk_username: str = '',
     rtk_password: str = '',
+    rtk_host: str = 'nrtk-swepos.lm.se',
+    rtk_port: int = 80,
+    rtk_mountpoint: str = 'MSM_GNSS',
     # Datum Settings
     use_datum: bool = False,
     datum_service: str = 'datum',
@@ -130,6 +133,9 @@ def main(
                            baud=rtk_baud,
                            gps_frame=f"{name}/gps",
                            ntrip_namespace=f"{name}/gps",
+                           host=rtk_host,
+                           port=rtk_port,
+                           mountpoint=rtk_mountpoint,
                            username=rtk_username,
                            password=rtk_password)
                     

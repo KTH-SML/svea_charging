@@ -24,8 +24,11 @@ def main(
     use_rtk: bool = True,
     rtk_device: str = '/dev/serial/by-id/usb-Arduino_LLC_Arduino_MKR_WiFi_1010_C5EE644B5150484347202020FF0E0B39-if00',
     rtk_baud: int = 115200,
-    rtk_username: str = 'ITRL03',
-    rtk_password: str = '171488',
+    rtk_username: str = 'account1',                #default = 'ITRL03'
+    rtk_password: str = 'BH1FPdsJ23U',             #default = '171488'
+    rtk_host: str = '129.192.83.103',              #default = 'nrtk-swepos.lm.se'
+    rtk_port: int = 2101,                          #default = 80
+    rtk_mountpoint: str = 'swepos/test/Kista01',   #default = 'MSM_GNSS'
     use_datum: bool = False,
     datum_service: str = 'datum',
     datum_file: str = '',
@@ -56,6 +59,9 @@ def main(
                    rtk_baud=rtk_baud,
                    rtk_username=rtk_username,
                    rtk_password=rtk_password,
+                   rtk_host=rtk_host,
+                   rtk_port=rtk_port,
+                   rtk_mountpoint=rtk_mountpoint,
                    use_datum=use_datum,
                    datum_service=datum_service,
                    datum_file=datum_file,
