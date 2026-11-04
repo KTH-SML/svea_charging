@@ -52,16 +52,16 @@ def main(
     map_topic: str = '/map',
     nominal_battery_charge_current: float = 3.3,
     nominal_battery_discharge_current_stationary: float = 1.64,
-    nominal_battery_discharge_current_driving: float = 3.4,
-    voltage = 12.0,
+    nominal_battery_discharge_current_driving: float = 3.5,
+    voltage = 11.15,
     ## LiDAR
     lidar_ip: str = "192.168.0.10",
-    init_soc_a: float = 63,
-    init_soc_b: float = 71,
+    init_soc_a: float = 60,
+    init_soc_b: float = 67,
     tasks_a: str = "110,110,160",
-    tasks_b: str = "160,110,110",
-    outages: str = "338:599, 705:875, 1136:1200",
-    controller: str = "OPTIMIZER",
+    tasks_b: str = "160, 110, 110",
+    outages: str = "207:358, 724:882, 996:1200",
+    controller: str = "ORACLE",
 ):
 
     charge_a = nominal_battery_charge_current
@@ -300,8 +300,8 @@ def main(
                     name="battery_simulator",
                     params=dict(
                         battery_charge_current=charge_a,
-                        battery_discharge_current_stationary = wait_a,        
-                        battery_discharge_current_driving = drive_a,
+                        battery_discharge_current_stationary = -wait_a,        
+                        battery_discharge_current_driving = -drive_a,
                     ),
                 )
     

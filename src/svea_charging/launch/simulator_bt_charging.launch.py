@@ -51,7 +51,7 @@ def main(
     map_topic: str = '/map',
     nominal_battery_charge_current: float = 3.3,
     nominal_battery_discharge_current_stationary: float = 1.64,
-    nominal_battery_discharge_current_driving: float = 3.4,
+    nominal_battery_discharge_current_driving: float = 3.5,
     voltage = 12.0,
     init_soc_a: float = 40,
     init_soc_b: float = 30,

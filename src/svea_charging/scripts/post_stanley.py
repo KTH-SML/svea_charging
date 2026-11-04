@@ -164,7 +164,7 @@ class OutdoorStanley(rx.Node):
         else:
             self.odom_sub = self.create_subscription(
                 Odometry,
-                "/svea3/odom",
+                self.odometry_topic,
                 self.odom_cb,
                 qos_pubber,
             )

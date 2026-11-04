@@ -602,7 +602,7 @@ class exp_runner(rx.Node):
         if elapsed == self._last_run_sample_second:
             return
         if self._run_csv_writer is None:
-            self._run_csv_file = open("run.csv", "w", newline="")
+            self._run_csv_file = open("src/run.csv", "w", newline="")
             self._run_csv_writer = csv.DictWriter(
                 self._run_csv_file,
                 fieldnames=(

@@ -7,7 +7,7 @@ ARGS="$@"
 if isempty ARGS; then
     ARGS="--name $CONTAINER_NAME"
 fi
-###### comment lines 15 to 28 to not have to have a zenoh server running. 
+###### comment lines 15 to 29 to not have to have a zenoh server running. 
 # ------------------------------------------------------------------
 # ROS 2 / Zenoh configuration
 # ------------------------------------------------------------------
@@ -19,7 +19,7 @@ append ARGS \
     -e "RUST_LOG=off" \
 
 # WSL: connect to the Linux Zenoh router.
-# Native Linux host: don't force a Zenoh client configuration.
+# Native Linux host: don't force a Zenoh client configuration. ## remove this if statement to use on SVEA2
 if [ -n "$WSL_DISTRO_NAME" ]; then
     # append() uses eval, so escape the JSON5 quotes.
     ZENOH_CONFIG='mode=\"client\";connect/endpoints=[\"tcp/10.0.8.195:7447\"]'

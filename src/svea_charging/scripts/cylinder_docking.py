@@ -77,6 +77,7 @@ class cylinder_docking(rx.Node):
     left_cylinder_y = rx.Parameter(-1.5)
     right_cylinder_x = rx.Parameter(4.7)
     right_cylinder_y = rx.Parameter(-2.1)
+    odometry_topic = rx.Parameter("/svea3/odom")
 
     # =========================================================================
     # PERCEPTION & LANDMARK EXTRACTION
@@ -169,7 +170,7 @@ class cylinder_docking(rx.Node):
         else:
             self.odom_sub = self.create_subscription(
                 Odometry,
-                "/svea3/odom",
+                self.odometry_topic,
                 self.odom_cb,
                 qos_profile_sensor_data,
             )

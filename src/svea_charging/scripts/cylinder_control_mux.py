@@ -40,6 +40,7 @@ class control_mux(rx.Node):
     output_hz = rx.Parameter(20.0)
     active_controller = rx.Parameter("idle")
     charging_arm_topic = rx.Parameter("charging_arm")
+    odometry_topic = rx.Parameter("/svea3/odom")
     charging_arm_active_xtr1 = rx.Parameter(100.0)
     charging_arm_inactive_xtr1 = rx.Parameter(0.0)
     #localizer = LocalizationInterface()
@@ -121,7 +122,7 @@ class control_mux(rx.Node):
         else:
             self.odom_sub = self.create_subscription(
                 Odometry,
-                "/svea3/odom",
+                self.odometry_topic,
                 self.odom_cb,
                 qos_profile_sensor_data,
             )
