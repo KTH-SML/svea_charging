@@ -12,24 +12,25 @@ fi
 # ROS 2 / Zenoh configuration
 # ------------------------------------------------------------------
 
-append ARGS \
-    -e "TERM=xterm-256color" \
-    -e "RMW_IMPLEMENTATION=rmw_zenoh_cpp" \
-    -e "ROS_DOMAIN_ID=0" \
-    -e "RUST_LOG=off" \
+# append ARGS \
+#     -e "TERM=xterm-256color" \
+#     -e "RMW_IMPLEMENTATION=rmw_zenoh_cpp" \
+#     -e "ROS_DOMAIN_ID=0" \
+#     -e "RUST_LOG=off" \
 
-# WSL: connect to the Linux Zenoh router.
-# Native Linux host: don't force a Zenoh client configuration. ## remove this if statement to use on SVEA2
-if [ -n "$WSL_DISTRO_NAME" ]; then
-    # append() uses eval, so escape the JSON5 quotes.
-    ZENOH_CONFIG='mode=\"client\";connect/endpoints=[\"tcp/10.0.8.195:7447\"]'
+# # WSL: connect to the Linux Zenoh router.
+# # Native Linux host: don't force a Zenoh client configuration. ## remove this if statement to use on SVEA2
+# if [ -n "$WSL_DISTRO_NAME" ]; then
+#     # append() uses eval, so escape the JSON5 quotes.
+#     ZENOH_CONFIG='mode=\"client\";connect/endpoints=[\"tcp/10.0.8.195:7447\"]'
 
-    append ARGS \
-        -e "ZENOH_CONFIG_OVERRIDE=$ZENOH_CONFIG"
-fi
+#     append ARGS \
+#         -e "ZENOH_CONFIG_OVERRIDE=$ZENOH_CONFIG"
+# fi
 
 append ARGS \
     -it \
+    -e "ROS_DOMAIN_ID=$ROS_DOMAIN_ID" \
     -v "$SHARED_VOLUME" \
     --rm
 

@@ -32,6 +32,9 @@ def main(
     datum_data: str = '[]',
     ## External Communication
     use_zenoh: bool = False,
+    use_domain_bridge: bool = False,
+    bridge_from_domain: int = 10,
+    bridge_to_domain: int = 20,
     ## Foxglove
     use_foxglove: bool = True,
     use_urdf: bool = False,
@@ -94,6 +97,12 @@ def main(
 
         bl.process(f"zenoh-bridge-ros2dds -c {ZENOH_CONFIG}",
                    name="zenoh_bridge")
+
+    if use_domain_bridge:
+        DOMAIN_BRIDGE_CONFIG = bl.find("svea_core", "params/domain_bridge.yaml")
+
+        bl.process(f"ros2 run domain_bridge domain_bridge --from {bridge_from_domain} --to {bridge_to_domain} {DOMAIN_BRIDGE_CONFIG}",
+                   name="domain_bridge")
 
     if use_foxglove:
         bl.include("foxglove_bridge", "foxglove_bridge_launch.xml",

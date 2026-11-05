@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import os
+
 from better_launch import BetterLaunch, launch_this
 
 ROUTE_PRESETS = {
@@ -14,9 +16,12 @@ ROUTE_PRESETS = {
 
 @launch_this
 def main(
-    vehicle: str = "svea_3",
+    vehicle: str = "",
     is_sim: bool = False,
-    name: str = "svea_a",
+    name: str = "",
+    use_domain_bridge: bool = False,
+    domain_id: int = -1,
+    peer_domain_id: int = -1,
     enabled: bool = True,
     # transport_start_location: str = "A",
     initial_pose_x: float = -1.2,
@@ -71,6 +76,25 @@ def main(
 
     bl = BetterLaunch()
 
+    vehicle_names = {"svea_3": "svea_a", "svea_2": "svea_b"}
+    name_vehicles = {robot_name: robot for robot, robot_name in vehicle_names.items()}
+    if not vehicle and not name:
+        vehicle, name = "svea_3", "svea_a"
+    elif not vehicle:
+        vehicle = name_vehicles.get(name, "")
+    elif not name:
+        name = vehicle_names.get(vehicle, "")
+    if not vehicle or not name or vehicle_names.get(vehicle) != name:
+        raise ValueError("vehicle/name must identify the matching SVEA pair: svea_3/svea_a or svea_2/svea_b")
+
+    default_domains = {"svea_a": (10, 20), "svea_b": (20, 10)}
+    default_domain_id, default_peer_domain_id = default_domains[name]
+    domain_id = default_domain_id if domain_id < 0 else domain_id
+    peer_domain_id = default_peer_domain_id if peer_domain_id < 0 else peer_domain_id
+    if not 0 <= domain_id <= 232 or not 0 <= peer_domain_id <= 232:
+        raise ValueError("domain IDs must be between 0 and 232")
+    os.environ["ROS_DOMAIN_ID"] = str(domain_id)
+
     #laser_frame = f"{name}/laser"
     if route_preset:
         if route_preset not in ROUTE_PRESETS:
@@ -92,14 +116,11 @@ def main(
         transport_stanley_params = bl.find("svea_charging", "params/routes/transport_stanley.yaml")
 
 
-    if vehicle == "svea_3":
-        INITIAL_POSES = {
-            "svea_a": (-1.2, 0.0, 1.5, "A", "svea_b", False, 1.9, 0.42, "/svea3/odom"),
-            }
-    if vehicle == "svea_2":
-        INITIAL_POSES = {
-            "svea_b": (1.2, 0.0, -1.64, "B", "svea_a", False, 1.9, 0.48, "/svea2/odom"),
-            }
+    INITIAL_POSES = {
+        "svea_a": (-1.2, 0.0, 1.5, "A", "svea_b", False, 1.9, 0.42, "/svea3/odom"),
+        "svea_b": (1.2, 0.0, -1.64, "B", "svea_a", False, 1.9, 0.48, "/svea2/odom"),
+    }
+    INITIAL_POSES = {name: INITIAL_POSES[name]}
 
     for name, (init_x, init_y, init_a, start_loc, other_name, sim, switch_dist, turn_vel, odom_topic) in INITIAL_POSES.items():
         if name == "svea_a":
@@ -138,6 +159,9 @@ def main(
             use_datum=use_datum,
             datum_service="datum",
             datum_file=datum_file,
+            use_domain_bridge=use_domain_bridge and name == "svea_a",
+            bridge_from_domain=domain_id,
+            bridge_to_domain=peer_domain_id,
             use_foxglove=use_foxglove,
         )
         if not sim: 

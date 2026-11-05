@@ -1,0 +1,21 @@
+name: svea_domain_bridge
+from_domain: 10
+to_domain: 20
+topics:
+  /svea_b/mavros/battery:
+    type: sensor_msgs/msg/BatteryState
+    reversed: true
+  /svea_b/mission/vehicle_status:
+    type: std_msgs/msg/String
+    reversed: true
+  /svea_a/region:
+    type: std_msgs/msg/String
+  /svea_b/region:
+    type: std_msgs/msg/String
+    reversed: true
+  /svea_b/mission/charge_done:
+    type: std_msgs/msg/Bool
+  /svea_b/mission/action:
+    type: std_msgs/msg/String
+  /svea_b/mission/transport_length:
+    type: std_msgs/msg/String

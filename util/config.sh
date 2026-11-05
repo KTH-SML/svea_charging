@@ -19,6 +19,7 @@ main() {
     withdefault BUILD_CONFIG "host"
 
     withdefault ROSDISTRO       "jazzy"
+    withdefault ROS_DOMAIN_ID   "0"
     withdefault WORKSPACE       "/svea_ws"
     withdefault REPOSITORY_PATH "$(climb entrypoint)"
     withdefault REPOSITORY_NAME "$(basename "$REPOSITORY_PATH")"
@@ -90,6 +91,7 @@ main() {
         echovar BUILD_CONFIG
         echo
         echovar ROSDISTRO
+        echovar ROS_DOMAIN_ID
         echovar WORKSPACE
         echovar REPOSITORY_PATH
         echovar REPOSITORY_NAME
